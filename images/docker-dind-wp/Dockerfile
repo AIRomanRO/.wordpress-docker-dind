@@ -44,6 +44,20 @@ RUN apk add --no-cache \
 # Install MailCatcher
 RUN gem install mailcatcher --no-document
 
+# Install WP-CLI
+RUN curl -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && \
+    chmod +x /usr/local/bin/wp && \
+    mkdir -p /root/.wp-cli && \
+    wp --info || true
+
+# Copy WP-CLI configuration
+COPY wp-cli.yml /root/.wp-cli/config.yml
+
+# Set WP-CLI environment variable to allow root
+ENV WP_CLI_ALLOW_ROOT=1
+
+# Download and install phpMyAdmin
+
 # Download and install phpMyAdmin
 RUN mkdir -p /var/www/phpmyadmin && \
     cd /tmp && \
@@ -64,6 +78,7 @@ RUN mkdir -p /wordpress-instances \
 COPY entrypoint.sh /app/
 COPY network-setup.sh /app/
 COPY instance-manager.sh /app/
+COPY install-wordpress.sh /app/
 COPY supervisord.conf /etc/supervisord.conf
 COPY nginx-phpmyadmin.conf /etc/nginx/http.d/phpmyadmin.conf
 COPY phpmyadmin-config.inc.php /var/www/phpmyadmin/config.inc.php

@@ -1,0 +1,32 @@
+# WP-CLI Configuration
+# This file is placed in /root/.wp-cli/config.yml
+
+# Allow running as root by default
+apache_modules:
+  - mod_rewrite
+
+# Disable color output in non-interactive mode
+color: auto
+
+# Allow root user
+user: root
+
+# Quiet mode - less verbose output
+quiet: false
+
+# Default path (can be overridden with --path)
+# path: /var/www/html
+
+# Skip checking for updates
+skip-plugins:
+  - akismet
+  - hello
+
+# Core download settings
+core download:
+  locale: en_US
+  version: latest
+
+# Core install settings  
+core install:
+  skip-email: true
