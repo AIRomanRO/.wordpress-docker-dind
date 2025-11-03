@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  wordpress-dind:
+    image: wp-dind:latest
+    container_name: wordpress-dind-host
+    privileged: true
+    environment:
+      - DOCKER_TLS_CERTDIR=
+      - ENABLE_NETWORK_ISOLATION=true
+    ports:
+      - "2375:2375"           # Docker daemon
+      - "8000-8099:8000-8099" # WordPress instances
+      - "8080:8080"           # phpMyAdmin (inside DinD)
+      - "1080:1080"           # MailCatcher Web UI (inside DinD)
+      - "1025:1025"           # MailCatcher SMTP (inside DinD)
+    volumes:
+      - wordpress-instances:/wordpress-instances
+      - dind-docker-data:/var/lib/docker
+      - ./shared-images:/shared-images
+      - ./config:/host-config:ro           # Mount host config folder (read-only)
+      - ./logs:/host-logs                  # Mount host logs folder (read-write)
+    networks:
+      - wordpress-dind-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "docker", "info"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  wordpress-dind-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.19.0.0/16
+
+volumes:
+  wordpress-instances:
+    driver: local
+  dind-docker-data:
+    driver: local

@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  # Docker-in-Docker WordPress Host
+  wordpress-dind:
+    build:
+      context: ./images/docker-dind-wp
+      dockerfile: Dockerfile
+    image: wp-dind:latest
+    container_name: wordpress-dind-host
+    privileged: true
+    environment:
+      # Enable network isolation for WordPress instances
+      ENABLE_NETWORK_ISOLATION: "true"
+      # Docker daemon configuration
+      DOCKER_TLS_CERTDIR: ""
+    ports:
+      # Expose Docker daemon (optional, for remote management)
+      - "2375:2375"
+      # Port range for WordPress instances (80xx range)
+      - "8000-8099:8000-8099"
+    volumes:
+      # Persist WordPress instances data
+      - wordpress-instances:/wordpress-instances
+      # Share Docker images with host (optional)
+      - ./shared-images:/shared-images
+      # Persist Docker data
+      - dind-docker-data:/var/lib/docker
+      # Share Docker socket with host (optional, for image sharing)
+      - /var/run/docker.sock:/var/run/docker-host.sock:ro
+    networks:
+      - wordpress-dind-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "docker", "info"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # phpMyAdmin for database management
+  phpmyadmin:
+    build:
+      context: ./images/phpMyAdmin
+      dockerfile: Dockerfile
+    image: wp-phpmyadmin:5.2.3
+    container_name: wordpress-phpmyadmin
+    environment:
+      PMA_ARBITRARY: 1
+      PMA_HOST: ""
+      PMA_PORT: 3306
+      UPLOAD_LIMIT: 300M
+    ports:
+      - "8080:80"
+    volumes:
+      - phpmyadmin-sessions:/sessions
+    networks:
+      - wordpress-dind-network
+    restart: unless-stopped
+
+  # MailCatcher for email testing
+  mailcatcher:
+    build:
+      context: ./images/mailCatcher
+      dockerfile: Dockerfile
+    image: wp-mailcatcher:0.10.0
+    container_name: wordpress-mailcatcher
+    ports:
+      - "1080:1080"  # Web interface
+      - "1025:1025"  # SMTP server
+    networks:
+      - wordpress-dind-network
+    restart: unless-stopped
+
+networks:
+  wordpress-dind-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.19.0.0/16
+
+volumes:
+  wordpress-instances:
+    driver: local
+  dind-docker-data:
+    driver: local
+  phpmyadmin-sessions:
+    driver: local
+

@@ -22,4 +22,8 @@ node_modules/
 *.sql
 *.sqlite
 
+# ignore IDE config
 .idea/*
+
+# ignore .env settings
+.env

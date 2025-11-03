@@ -1,0 +1,437 @@
+#!/bin/bash
+set -e
+
+INSTANCES_DIR="/wordpress-instances"
+NETWORK_PREFIX="wp-network"
+HOST_CONFIG_DIR="/host-config"
+HOST_LOGS_DIR="/host-logs"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Function to display usage
+usage() {
+    cat << EOF
+WordPress Instance Manager
+
+Usage: $0 <command> [options]
+
+Commands:
+    create <name> [mysql_version] [php_version] [webserver]
+                                     Create a new WordPress instance
+                                     mysql_version: 56, 57, 80 (default: 80)
+                                     php_version: 74, 80, 81, 82, 83 (default: 83)
+                                     webserver: nginx, apache (default: nginx)
+
+    start <name>                     Start a WordPress instance
+
+    stop <name>                      Stop a WordPress instance
+
+    remove <name>                    Remove a WordPress instance
+
+    list                             List all WordPress instances
+
+    info <name>                      Show information about an instance
+
+    logs <name> [service]            Show logs for an instance
+                                     service: php, mysql, nginx/apache (default: all)
+
+Examples:
+    $0 create mysite 80 83 nginx
+    $0 create mysite2 57 74 apache
+    $0 start mysite
+    $0 info mysite
+    $0 logs mysite php
+    $0 stop mysite
+    $0 remove mysite
+
+EOF
+    exit 1
+}
+
+# Function to create a new WordPress instance
+create_instance() {
+    local name=$1
+    local mysql_version=${2:-80}
+    local php_version=${3:-83}
+    local webserver=${4:-nginx}
+    local instance_dir="${INSTANCES_DIR}/${name}"
+
+    if [ -d "$instance_dir" ]; then
+        echo -e "${RED}Error: Instance '${name}' already exists${NC}"
+        exit 1
+    fi
+
+    # Validate webserver choice
+    if [ "$webserver" != "nginx" ] && [ "$webserver" != "apache" ]; then
+        echo -e "${RED}Error: Invalid webserver '${webserver}'. Must be 'nginx' or 'apache'${NC}"
+        exit 1
+    fi
+
+    echo -e "${GREEN}Creating WordPress instance: ${name}${NC}"
+    echo -e "${YELLOW}  MySQL: ${mysql_version}, PHP: ${php_version}, Web Server: ${webserver}${NC}"
+
+    # Map version codes to full versions for directory names
+    local mysql_full_version
+    case $mysql_version in
+        56) mysql_full_version="5.6" ;;
+        57) mysql_full_version="5.7" ;;
+        80) mysql_full_version="8.0" ;;
+        *) mysql_full_version="8.0" ;;
+    esac
+
+    local php_full_version
+    case $php_version in
+        74) php_full_version="7.4" ;;
+        80) php_full_version="8.0" ;;
+        81) php_full_version="8.1" ;;
+        82) php_full_version="8.2" ;;
+        83) php_full_version="8.3" ;;
+        *) php_full_version="8.3" ;;
+    esac
+
+    local webserver_version
+    if [ "$webserver" = "nginx" ]; then
+        webserver_version="1.27"
+    else
+        webserver_version="2.4"
+    fi
+
+    # Create instance directory structure with version-specific config and log folders
+    mkdir -p "${instance_dir}"/data/wordpress
+    mkdir -p "${instance_dir}"/data/mysql
+    mkdir -p "${instance_dir}"/logs/php-${php_full_version}
+    mkdir -p "${instance_dir}"/logs/mysql-${mysql_full_version}
+    mkdir -p "${instance_dir}"/logs/${webserver}-${webserver_version}
+    mkdir -p "${instance_dir}"/config/php-${php_full_version}
+    mkdir -p "${instance_dir}"/config/mysql-${mysql_full_version}
+    mkdir -p "${instance_dir}"/config/${webserver}-${webserver_version}
+    
+    # Generate random passwords
+    local db_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+    local db_root_password=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+
+    # Get next available instance ID for network
+    local instance_id=$(find "$INSTANCES_DIR" -maxdepth 1 -type d | wc -l)
+    local network_name="${NETWORK_PREFIX}-${instance_id}"
+
+    # Create network if it doesn't exist
+    if ! docker network inspect "$network_name" >/dev/null 2>&1; then
+        local subnet="172.20.${instance_id}.0/24"
+        docker network create \
+            --driver bridge \
+            --subnet "$subnet" \
+            "$network_name"
+    fi
+
+    # Copy default PHP configuration from templates
+    cp /app/config-templates/php/*.ini "${instance_dir}/config/php-${php_full_version}/"
+
+    # Create a custom.ini for user overrides
+    cat > "${instance_dir}/config/php-${php_full_version}/custom.ini" << 'EOF'
+; Custom PHP settings
+; Add your custom PHP configuration here
+; This file will override settings from other .ini files
+
+; Example: Enable Xdebug for debugging
+; xdebug.mode=debug
+
+; Example: Increase memory limit
+; memory_limit=512M
+EOF
+
+    # Copy default MySQL configuration from templates
+    cp /app/config-templates/mysql/my.cnf "${instance_dir}/config/mysql-${mysql_full_version}/"
+    
+    # Create docker-compose.yml for the instance
+    cat > "${instance_dir}/docker-compose.yml" << EOF
+version: '3.8'
+
+services:
+  mysql:
+    image: wp-mysql:${mysql_version}
+    container_name: ${name}-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${db_root_password}
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: ${db_password}
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+      - ./logs/mysql-${mysql_full_version}:/var/log/mysql
+      - ./config/mysql-${mysql_full_version}/my.cnf:/etc/mysql/conf.d/custom.cnf:ro
+    networks:
+      - ${network_name}
+    restart: unless-stopped
+
+  php:
+    image: wp-php:${php_version}
+    container_name: ${name}-php
+    depends_on:
+      - mysql
+    environment:
+      WORDPRESS_DB_HOST: mysql:3306
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: ${db_password}
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - ./data/wordpress:/var/www/html
+      - ./config/php-${php_full_version}/custom.ini:/usr/local/etc/php/conf.d/zzz-custom.ini:ro
+      - ./logs/php-${php_full_version}:/var/log/php
+    networks:
+      - ${network_name}
+    restart: unless-stopped
+
+  ${webserver}:
+    image: wp-${webserver}:latest
+    container_name: ${name}-${webserver}
+    depends_on:
+      - php
+    ports:
+      - "0:80"
+    volumes:
+      - ./data/wordpress:/var/www/html:ro
+      - ./config/${webserver}-${webserver_version}:/etc/${webserver}/conf.d:ro
+      - ./logs/${webserver}-${webserver_version}:/var/log/${webserver}
+    networks:
+      - ${network_name}
+    restart: unless-stopped
+
+networks:
+  ${network_name}:
+    external: true
+EOF
+
+    # Copy web server configuration from templates
+    if [ "$webserver" = "nginx" ]; then
+        cp /app/config-templates/nginx/wordpress.conf "${instance_dir}/config/nginx-${webserver_version}/"
+    else
+        cp /app/config-templates/apache/wordpress.conf "${instance_dir}/config/apache-${webserver_version}/"
+    fi
+
+    # Save instance metadata
+    cat > "${instance_dir}/.instance-info" << EOF
+NAME=${name}
+MYSQL_VERSION=${mysql_version}
+PHP_VERSION=${php_version}
+WEBSERVER=${webserver}
+NETWORK=${network_name}
+CREATED=$(date -Iseconds)
+DB_PASSWORD=${db_password}
+DB_ROOT_PASSWORD=${db_root_password}
+EOF
+
+    echo -e "${GREEN}Instance '${name}' created successfully!${NC}"
+    echo -e "${YELLOW}Instance directory: ${instance_dir}${NC}"
+    echo -e "${YELLOW}Configuration:${NC}"
+    echo -e "  - MySQL: ${mysql_version}"
+    echo -e "  - PHP: ${php_version}"
+    echo -e "  - Web Server: ${webserver}"
+    echo -e "  - Network: ${network_name}"
+    echo ""
+    echo -e "${YELLOW}Configuration files:${NC}"
+    echo -e "  - PHP: ${instance_dir}/config/php/php.ini"
+    echo -e "  - MySQL: ${instance_dir}/config/mysql/my.cnf"
+    echo -e "  - ${webserver}: ${instance_dir}/config/${webserver}/"
+    echo ""
+    echo -e "${YELLOW}Data directories:${NC}"
+    echo -e "  - WordPress: ${instance_dir}/data/wordpress/"
+    echo -e "  - MySQL: ${instance_dir}/data/mysql/"
+    echo -e "  - Logs: ${instance_dir}/data/logs/"
+    echo ""
+    echo "To start the instance, run:"
+    echo "  $0 start ${name}"
+}
+
+# Function to start an instance
+start_instance() {
+    local name=$1
+    local instance_dir="${INSTANCES_DIR}/${name}"
+    
+    if [ ! -d "$instance_dir" ]; then
+        echo -e "${RED}Error: Instance '${name}' does not exist${NC}"
+        exit 1
+    fi
+    
+    # Load instance info to get webserver type
+    source "$instance_dir/.instance-info"
+
+    echo -e "${GREEN}Starting WordPress instance: ${name}${NC}"
+    cd "$instance_dir"
+    docker-compose up -d
+
+    # Get the webserver port
+    local webserver_port=$(docker port "${name}-${WEBSERVER}" 80 2>/dev/null | cut -d: -f2)
+
+    echo -e "${GREEN}Instance '${name}' started successfully!${NC}"
+    if [ -n "$webserver_port" ]; then
+        echo -e "${YELLOW}Access WordPress at: http://localhost:${webserver_port}${NC}"
+    fi
+}
+
+# Function to stop an instance
+stop_instance() {
+    local name=$1
+    local instance_dir="${INSTANCES_DIR}/${name}"
+    
+    if [ ! -d "$instance_dir" ]; then
+        echo -e "${RED}Error: Instance '${name}' does not exist${NC}"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}Stopping WordPress instance: ${name}${NC}"
+    cd "$instance_dir"
+    docker-compose stop
+    echo -e "${GREEN}Instance '${name}' stopped${NC}"
+}
+
+# Function to remove an instance
+remove_instance() {
+    local name=$1
+    local instance_dir="${INSTANCES_DIR}/${name}"
+    
+    if [ ! -d "$instance_dir" ]; then
+        echo -e "${RED}Error: Instance '${name}' does not exist${NC}"
+        exit 1
+    fi
+    
+    echo -e "${YELLOW}Warning: This will remove all data for instance '${name}'${NC}"
+    read -p "Are you sure? (yes/no): " confirm
+    
+    if [ "$confirm" != "yes" ]; then
+        echo "Cancelled"
+        exit 0
+    fi
+    
+    echo -e "${GREEN}Removing WordPress instance: ${name}${NC}"
+    cd "$instance_dir"
+    docker-compose down -v
+    cd /
+    rm -rf "$instance_dir"
+    echo -e "${GREEN}Instance '${name}' removed${NC}"
+}
+
+# Function to list all instances
+list_instances() {
+    echo -e "${GREEN}WordPress Instances:${NC}"
+    echo ""
+    
+    if [ ! -d "$INSTANCES_DIR" ] || [ -z "$(ls -A $INSTANCES_DIR 2>/dev/null)" ]; then
+        echo "No instances found"
+        return
+    fi
+    
+    printf "%-15s %-8s %-8s %-10s %-20s %-10s\n" "NAME" "MYSQL" "PHP" "WEBSERVER" "NETWORK" "STATUS"
+    printf "%-15s %-8s %-8s %-10s %-20s %-10s\n" "----" "-----" "---" "---------" "-------" "------"
+
+    for instance_dir in "$INSTANCES_DIR"/*; do
+        if [ -d "$instance_dir" ] && [ -f "$instance_dir/.instance-info" ]; then
+            source "$instance_dir/.instance-info"
+            local status="stopped"
+            if docker ps --format '{{.Names}}' | grep -q "^${NAME}-"; then
+                status="running"
+            fi
+            printf "%-15s %-8s %-8s %-10s %-20s %-10s\n" "$NAME" "$MYSQL_VERSION" "$PHP_VERSION" "$WEBSERVER" "$NETWORK" "$status"
+        fi
+    done
+}
+
+# Function to show instance info
+show_info() {
+    local name=$1
+    local instance_dir="${INSTANCES_DIR}/${name}"
+    
+    if [ ! -d "$instance_dir" ] || [ ! -f "$instance_dir/.instance-info" ]; then
+        echo -e "${RED}Error: Instance '${name}' does not exist${NC}"
+        exit 1
+    fi
+    
+    source "$instance_dir/.instance-info"
+    
+    echo -e "${GREEN}Instance Information: ${name}${NC}"
+    echo "================================"
+    echo "Name: $NAME"
+    echo "MySQL Version: $MYSQL_VERSION"
+    echo "PHP Version: $PHP_VERSION"
+    echo "Web Server: $WEBSERVER"
+    echo "Network: $NETWORK"
+    echo "Created: $CREATED"
+    echo "Instance Directory: $instance_dir"
+    echo ""
+    echo "Database Credentials:"
+    echo "  Database: wordpress"
+    echo "  User: wordpress"
+    echo "  Password: $DB_PASSWORD"
+    echo "  Root Password: $DB_ROOT_PASSWORD"
+    echo ""
+    echo "Configuration Files:"
+    echo "  PHP: $instance_dir/config/php/php.ini"
+    echo "  MySQL: $instance_dir/config/mysql/my.cnf"
+    echo "  $WEBSERVER: $instance_dir/config/$WEBSERVER/"
+    echo ""
+    echo "Data Directories:"
+    echo "  WordPress: $instance_dir/data/wordpress/"
+    echo "  MySQL: $instance_dir/data/mysql/"
+    echo "  Logs: $instance_dir/data/logs/"
+    echo ""
+
+    # Check if running
+    if docker ps --format '{{.Names}}' | grep -q "^${NAME}-"; then
+        echo -e "${GREEN}Status: Running${NC}"
+        echo ""
+        echo "Containers:"
+        docker ps --filter "name=${NAME}-" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+        # Get webserver port
+        local webserver_port=$(docker port "${NAME}-${WEBSERVER}" 80 2>/dev/null | cut -d: -f2)
+        if [ -n "$webserver_port" ]; then
+            echo ""
+            echo -e "${YELLOW}Access URL: http://localhost:${webserver_port}${NC}"
+        fi
+    else
+        echo -e "${YELLOW}Status: Stopped${NC}"
+    fi
+}
+
+# Main script logic
+case "${1:-}" in
+    create)
+        [ -z "$2" ] && usage
+        create_instance "$2" "${3:-80}" "${4:-83}" "${5:-nginx}"
+        ;;
+    start)
+        [ -z "$2" ] && usage
+        start_instance "$2"
+        ;;
+    stop)
+        [ -z "$2" ] && usage
+        stop_instance "$2"
+        ;;
+    remove)
+        [ -z "$2" ] && usage
+        remove_instance "$2"
+        ;;
+    list)
+        list_instances
+        ;;
+    info)
+        [ -z "$2" ] && usage
+        show_info "$2"
+        ;;
+    logs)
+        [ -z "$2" ] && usage
+        cd "${INSTANCES_DIR}/$2"
+        if [ -n "$3" ]; then
+            docker-compose logs -f "$3"
+        else
+            docker-compose logs -f
+        fi
+        ;;
+    *)
+        usage
+        ;;
+esac
+

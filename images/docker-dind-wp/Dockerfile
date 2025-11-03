@@ -1,0 +1,84 @@
+FROM docker:27-dind
+
+LABEL maintainer="aur3l.roman@gmail.com"
+LABEL version="27.0"
+LABEL type="wp-dind"
+LABEL description="Docker-in-Docker base image for WordPress hosting with image sharing"
+
+# Install required packages
+RUN apk add --no-cache \
+    bash \
+    curl \
+    git \
+    jq \
+    docker-compose \
+    iproute2 \
+    iptables \
+    bridge-utils \
+    ruby \
+    ruby-dev \
+    ruby-bundler \
+    sqlite-dev \
+    build-base \
+    libffi-dev \
+    openssl-dev \
+    php83 \
+    php83-fpm \
+    php83-mysqli \
+    php83-json \
+    php83-openssl \
+    php83-curl \
+    php83-zlib \
+    php83-xml \
+    php83-phar \
+    php83-intl \
+    php83-dom \
+    php83-xmlreader \
+    php83-ctype \
+    php83-session \
+    php83-mbstring \
+    php83-gd \
+    nginx \
+    supervisor
+
+# Install MailCatcher
+RUN gem install mailcatcher --no-document
+
+# Download and install phpMyAdmin
+RUN mkdir -p /var/www/phpmyadmin && \
+    cd /tmp && \
+    curl -L https://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-all-languages.tar.gz | tar xz && \
+    mv phpMyAdmin-5.2.3-all-languages/* /var/www/phpmyadmin/ && \
+    rm -rf phpMyAdmin-5.2.3-all-languages && \
+    chown -R nginx:nginx /var/www/phpmyadmin
+
+# Create directories for WordPress instances and services
+RUN mkdir -p /wordpress-instances \
+    /shared-images \
+    /app \
+    /var/log/supervisor \
+    /run/nginx \
+    /run/php-fpm
+
+# Copy application files
+COPY entrypoint.sh /app/
+COPY network-setup.sh /app/
+COPY instance-manager.sh /app/
+COPY supervisord.conf /etc/supervisord.conf
+COPY nginx-phpmyadmin.conf /etc/nginx/http.d/phpmyadmin.conf
+COPY phpmyadmin-config.inc.php /var/www/phpmyadmin/config.inc.php
+
+# Copy configuration templates
+COPY config-templates/ /app/config-templates/
+
+# Make scripts executable
+RUN chmod +x /app/*.sh
+
+WORKDIR /app
+
+# Expose Docker daemon port and service ports
+EXPOSE 2375 2376 8080 1080 1025
+
+# Use custom entrypoint
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD []
