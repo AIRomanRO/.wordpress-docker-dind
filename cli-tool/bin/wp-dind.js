@@ -135,7 +135,7 @@ function generateDockerCompose(targetDir, config = {}) {
 
     if (config.includePhpMyAdmin) {
         composeConfig.services.phpmyadmin = {
-            image: 'wp-phpmyadmin:latest',
+            image: 'airoman/wp-dind:phpmyadmin-5.2.3',
             container_name: `wp-phpmyadmin-${path.basename(targetDir)}`,
             environment: {
                 PMA_ARBITRARY: 1,
@@ -153,7 +153,7 @@ function generateDockerCompose(targetDir, config = {}) {
 
     if (config.includeMailCatcher) {
         composeConfig.services.mailcatcher = {
-            image: 'wp-mailcatcher:latest',
+            image: 'airoman/wp-dind:mailcatcher-0.10.0',
             container_name: `wp-mailcatcher-${path.basename(targetDir)}`,
             ports: ['1080:1080', '1025:1025'],
             networks: ['wordpress-dind-network'],
