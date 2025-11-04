@@ -2,9 +2,33 @@
 
 A comprehensive Docker-in-Docker setup for hosting multiple WordPress instances with network isolation, image sharing, and easy management through a global CLI tool.
 
+---
+
+## ⚠️ DEVELOPMENT ENVIRONMENT ONLY
+
+**This setup is designed for DEVELOPMENT and TESTING purposes only. DO NOT use in production environments.**
+
+**Why not for production?**
+- Docker-in-Docker runs in privileged mode (security risk)
+- No SSL/TLS encryption configured by default
+- Default credentials are weak (must be changed)
+- No backup/disaster recovery mechanisms
+- No high-availability or load balancing
+- Optimized for ease of development, not security or performance
+- Shared resources between instances (not isolated for production workloads)
+
+**For production WordPress hosting**, use:
+- Managed WordPress hosting services (WP Engine, Kinsta, etc.)
+- Traditional Docker Compose with proper security hardening
+- Kubernetes with WordPress Helm charts
+- Dedicated VPS/servers with proper security configurations
+
+---
+
 ## 🚀 Features
 
 - **Docker-in-Docker Architecture**: Run multiple isolated WordPress environments within a single Docker container
+- **Centralized Configuration**: All settings managed through `.env` file - ports, defaults, WordPress settings
 - **Image Sharing**: Share Docker images between host and DinD container for efficient resource usage
 - **Network Isolation**: Each WordPress instance runs in its own isolated network with unique IP addresses
 - **Multiple PHP Versions**: Support for PHP 7.4, 8.0, 8.1, 8.2, and 8.3
@@ -14,7 +38,7 @@ A comprehensive Docker-in-Docker setup for hosting multiple WordPress instances 
 - **Integrated Services** (running inside DinD):
     - phpMyAdmin for database management (port 8080)
     - MailCatcher for email testing (ports 1080/1025)
-- **Custom Configuration**: Per-instance config files for PHP, MySQL, and web servers
+- **Flexible Configuration**: Three-layer config system (built-in → host → instance-specific)
 - **Organized Data Structure**: Clean separation of data, config, and logs per instance
 - **Version-Tagged Images**: All images use specific version tags for reproducibility
 
@@ -22,14 +46,70 @@ A comprehensive Docker-in-Docker setup for hosting multiple WordPress instances 
 
 - Docker Engine 20.10 or higher
 - docker-compose 1.29 or higher
-- Node.js 18.0 or higher (for CLI tool)
+- Node.js 24.0 or higher (for CLI tool and npm scripts)
+- npm 10.0 or higher
 - Linux/macOS/Windows with WSL2
 
 ## 🎯 Quick Start
 
-### 1. Build Docker Images
+### Option A: Using NPM Scripts (Recommended)
 
-First, build all the required Docker images with proper version tags:
+```bash
+# 1. Create .env file from template
+npm run init:env
+
+# 2. Edit .env with your settings (optional)
+nano .env
+
+# 3. Build images and install CLI tool (one command!)
+npm run setup
+
+# 4. Start the DinD environment
+npm start
+
+# 5. Verify CLI is installed
+npm run test:cli
+```
+
+**Available npm scripts:**
+- `npm run setup` - Build images + install CLI (complete setup)
+- `npm start` - Start DinD container
+- `npm stop` - Stop DinD container
+- `npm run logs` - View container logs
+- `npm run status` - Check container status
+- `npm run rebuild` - Rebuild images and restart
+
+See `package.json` for all available scripts.
+
+### Option B: Manual Setup
+
+### 1. Configure Environment Variables (Optional)
+
+Customize your setup by editing the `.env` file:
+
+```bash
+# Create .env from template
+cp .env.example .env
+
+# Edit .env to customize:
+# - Ports (phpMyAdmin, MailCatcher, WordPress instances)
+# - Default versions (PHP, MySQL, web server)
+# - WordPress installation defaults (admin user, password, email)
+# - Network configuration
+
+# Example customizations:
+PHPMYADMIN_PORT=8080
+DEFAULT_PHP_VERSION=83
+DEFAULT_MYSQL_VERSION=80
+WORDPRESS_ADMIN_USER="admin"
+WORDPRESS_ADMIN_EMAIL="your-email@example.com"
+```
+
+See [Configuration Guide](docs/CONFIGURATION.md) for all available options.
+
+### 2. Build Docker Images
+
+Build all the required Docker images with proper version tags:
 
 ```bash
 chmod +x build-images.sh
@@ -45,14 +125,14 @@ This will build:
 - MailCatcher 0.10.0
 - Docker-in-Docker 27.0
 
-### 2. Install Global CLI Tool
+### 3. Install Global CLI Tool
 
 ```bash
 cd cli-tool
 npm install -g .
 ```
 
-### 3. Initialize a WordPress Environment
+### 4. Initialize a WordPress Environment
 
 ```bash
 mkdir my-wordpress-project
@@ -60,13 +140,15 @@ cd my-wordpress-project
 wp-dind init
 ```
 
-### 4. Start the Environment
+### 5. Start the Environment
 
 ```bash
 wp-dind start
 ```
 
 ### 5. Create a WordPress Instance
+
+Instances will use the defaults from your `.env` file unless you specify otherwise:
 
 Create an instance with custom configuration:
 
@@ -95,12 +177,23 @@ wp-dind exec instance-manager.sh info mysite
 
 ## 📚 Documentation
 
-- [Architecture Overview](docs/ARCHITECTURE.md)
-- [Installation Guide](docs/INSTALLATION.md)
-- [CLI Tool Reference](cli-tool/README.md)
-- [Network Configuration](docs/NETWORK.md)
-- [Image Management](docs/IMAGES.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
+### Getting Started
+- [Quick Start Guide](docs/QUICKSTART.md) - Get up and running quickly
+- [Installation Guide](docs/INSTALLATION.md) - Detailed installation instructions
+- [Configuration Guide](docs/CONFIGURATION.md) - **Environment variables and configuration options**
+
+### Usage & Reference
+- [Usage Guide](docs/USAGE.md) - Comprehensive usage examples
+- [Quick Reference](docs/QUICK_REFERENCE.md) - Command quick reference
+- [CLI Tool Reference](cli-tool/README.md) - Global CLI tool documentation
+
+### Technical Details
+- [Architecture Overview](docs/ARCHITECTURE.md) - System architecture and design
+- [Network Configuration](docs/NETWORK.md) - Network isolation and configuration
+- [Image Management](docs/IMAGES.md) - Docker image details
+
+### Help
+- [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
 
 ## 🏗️ Architecture
 

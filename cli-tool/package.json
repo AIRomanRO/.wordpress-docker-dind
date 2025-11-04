@@ -19,7 +19,8 @@
   "author": "aur3l.roman@gmail.com",
   "license": "MIT",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=24.0.0",
+    "npm": ">=10.0.0"
   },
   "dependencies": {
     "commander": "^11.1.0",
@@ -32,7 +33,7 @@
   "preferGlobal": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/wordpress-docker-dind.git"
+    "url": "https://github.com/AIRomanRO/wordpress-docker-dind.git"
   }
 }
 

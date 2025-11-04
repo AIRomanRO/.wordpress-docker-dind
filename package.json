@@ -1,0 +1,60 @@
+{
+  "name": "wordpress-docker-dind",
+  "version": "1.0.0",
+  "description": "WordPress Docker-in-Docker environment for hosting multiple WordPress instances with network isolation and easy management",
+  "main": "index.js",
+  "scripts": {
+    "setup": "npm run build:images && npm run install:cli",
+    "build:images": "chmod +x build-images.sh && ./build-images.sh",
+    "install:cli": "cd cli-tool && npm install && npm install -g .",
+    "uninstall:cli": "npm uninstall -g wp-dind-cli",
+    "start": "docker-compose -f docker-compose-dind.yml up -d",
+    "stop": "docker-compose -f docker-compose-dind.yml down",
+    "restart": "npm run stop && npm run start",
+    "logs": "docker-compose -f docker-compose-dind.yml logs -f",
+    "status": "docker-compose -f docker-compose-dind.yml ps",
+    "clean": "docker-compose -f docker-compose-dind.yml down -v",
+    "rebuild": "npm run stop && npm run build:images && npm run start",
+    "test:cli": "wp-dind --version",
+    "validate:env": "node -e \"require('fs').accessSync('.env', require('fs').constants.R_OK); console.log('.env file exists and is readable')\"",
+    "init:env": "cp .env.example .env && echo '.env file created from .env.example'",
+    "help": "echo 'Available scripts:' && npm run",
+    "postinstall": "echo '\n✅ Installation complete!\n\nNext steps:\n1. Run: npm run init:env (if .env does not exist)\n2. Edit .env file with your configuration\n3. Run: npm run setup\n4. Run: npm start\n\nFor more information, see README.md\n'"
+  },
+  "keywords": [
+    "wordpress",
+    "docker",
+    "docker-in-docker",
+    "dind",
+    "php",
+    "mysql",
+    "nginx",
+    "apache",
+    "development",
+    "testing",
+    "multi-version",
+    "isolated-environments"
+  ],
+  "author": "aur3l.roman@gmail.com",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=10.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AIRomanRO/wordpress-docker-dind.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AIRomanRO/wordpress-docker-dind/issues"
+  },
+  "homepage": "https://github.com/AIRomanRO/wordpress-docker-dind#readme",
+  "devDependencies": {},
+  "dependencies": {},
+  "preferGlobal": false,
+  "private": false,
+  "workspaces": [
+    "cli-tool"
+  ]
+}
+
