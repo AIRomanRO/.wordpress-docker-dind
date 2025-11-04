@@ -4,10 +4,31 @@ LABEL maintainer="aur3l.roman@gmail.com"
 LABEL version="8.3"
 LABEL description="PHP-FPM 8.3 for WordPress Docker-in-Docker setup"
 
-# Install dependencies and PHP extensions
+# Install runtime dependencies
 RUN apk add --no-cache \
     bash \
     curl \
+    freetype \
+    icu-libs \
+    imagemagick \
+    imagemagick-libs \
+    libjpeg-turbo \
+    libpng \
+    libwebp \
+    libxml2 \
+    libzip \
+    oniguruma \
+    openldap \
+    postgresql-libs \
+    sqlite-libs
+
+# Install build dependencies and compile PHP extensions
+RUN apk add --no-cache \
+    $PHPIZE_DEPS \
+    autoconf \
+    g++ \
+    make \
+    linux-headers \
     freetype-dev \
     icu-dev \
     imagemagick-dev \
@@ -39,8 +60,26 @@ RUN apk add --no-cache \
         pdo_sqlite \
         soap \
         zip \
-    && pecl install imagick redis xdebug \
-    && docker-php-ext-enable imagick redis xdebug
+    && pecl install imagick redis \
+    && pecl install xdebug \
+    && docker-php-ext-enable imagick redis xdebug \
+    && apk del --no-network \
+        autoconf \
+        g++ \
+        make \
+        linux-headers \
+        freetype-dev \
+        icu-dev \
+        imagemagick-dev \
+        jpeg-dev \
+        libpng-dev \
+        libwebp-dev \
+        libxml2-dev \
+        libzip-dev \
+        oniguruma-dev \
+        openldap-dev \
+        postgresql-dev \
+        sqlite-dev
 
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
