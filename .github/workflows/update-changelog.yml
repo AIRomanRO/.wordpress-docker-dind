@@ -1,0 +1,294 @@
+name: Update Changelog
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  update-changelog:
+    # Only run if PR was merged (not just closed)
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Get PR commits
+        id: get-commits
+        run: |
+          # Get all commits from the merged PR
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          
+          # Fetch commits from the PR
+          gh pr view $PR_NUMBER --json commits --jq '.commits[].messageHeadline' > pr_commits.txt
+          
+          echo "Commits in PR #$PR_NUMBER:"
+          cat pr_commits.txt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Parse conventional commits and update changelog
+        run: |
+          # Initialize arrays for different types
+          declare -a FEATURES=()
+          declare -a FIXES=()
+          declare -a DOCS=()
+          declare -a STYLES=()
+          declare -a REFACTORS=()
+          declare -a PERFORMANCE=()
+          declare -a TESTS=()
+          declare -a BUILDS=()
+          declare -a CI=()
+          declare -a CHORES=()
+          declare -a BREAKING=()
+          
+          # Parse commits
+          while IFS= read -r commit; do
+            # Skip empty lines
+            [[ -z "$commit" ]] && continue
+            
+            # Check for breaking changes
+            if [[ "$commit" =~ ^.*!: ]] || [[ "$commit" =~ BREAKING[[:space:]]CHANGE ]]; then
+              BREAKING+=("$commit")
+            fi
+            
+            # Parse conventional commit type
+            if [[ "$commit" =~ ^feat(\(.*\))?!?:[[:space:]](.+)$ ]]; then
+              FEATURES+=("${BASH_REMATCH[2]}")
+            elif [[ "$commit" =~ ^fix(\(.*\))?!?:[[:space:]](.+)$ ]]; then
+              FIXES+=("${BASH_REMATCH[2]}")
+            elif [[ "$commit" =~ ^docs(\(.*\))?!?:[[:space:]](.+)$ ]]; then
+              DOCS+=("${BASH_REMATCH[2]}")
+            elif [[ "$commit" =~ ^style(\(.*\))?!?:[[:space:]](.+)$ ]]; then
+              STYLES+=("${BASH_REMATCH[2]}")
+            elif [[ "$commit" =~ ^refactor(\(.*\))?!?:[[:space:]](.+)$ ]]; then
+              REFACTORS+=("${BASH_REMATCH[2]}")
+            elif [[ "$commit" =~ ^perf(\(.*\))?!?:[[:space:]](.+)$ ]]; then
+              PERFORMANCE+=("${BASH_REMATCH[2]}")
+            elif [[ "$commit" =~ ^test(\(.*\))?!?:[[:space:]](.+)$ ]]; then
+              TESTS+=("${BASH_REMATCH[2]}")
+            elif [[ "$commit" =~ ^build(\(.*\))?!?:[[:space:]](.+)$ ]]; then
+              BUILDS+=("${BASH_REMATCH[2]}")
+            elif [[ "$commit" =~ ^ci(\(.*\))?!?:[[:space:]](.+)$ ]]; then
+              CI+=("${BASH_REMATCH[2]}")
+            elif [[ "$commit" =~ ^chore(\(.*\))?!?:[[:space:]](.+)$ ]]; then
+              CHORES+=("${BASH_REMATCH[2]}")
+            fi
+          done < pr_commits.txt
+          
+          # Create changelog entry
+          CHANGELOG_ENTRY=""
+          DATE=$(date +%Y-%m-%d)
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          PR_URL="${{ github.event.pull_request.html_url }}"
+          
+          # Add PR reference
+          CHANGELOG_ENTRY+="### PR #$PR_NUMBER - $PR_TITLE\n"
+          CHANGELOG_ENTRY+="_Merged on $DATE_ - [View PR]($PR_URL)\n\n"
+          
+          # Add breaking changes first (if any)
+          if [ ${#BREAKING[@]} -gt 0 ]; then
+            CHANGELOG_ENTRY+="#### ⚠️ BREAKING CHANGES\n"
+            for item in "${BREAKING[@]}"; do
+              CHANGELOG_ENTRY+="- $item\n"
+            done
+            CHANGELOG_ENTRY+="\n"
+          fi
+          
+          # Add features
+          if [ ${#FEATURES[@]} -gt 0 ]; then
+            CHANGELOG_ENTRY+="#### Added\n"
+            for item in "${FEATURES[@]}"; do
+              CHANGELOG_ENTRY+="- $item\n"
+            done
+            CHANGELOG_ENTRY+="\n"
+          fi
+          
+          # Add fixes
+          if [ ${#FIXES[@]} -gt 0 ]; then
+            CHANGELOG_ENTRY+="#### Fixed\n"
+            for item in "${FIXES[@]}"; do
+              CHANGELOG_ENTRY+="- $item\n"
+            done
+            CHANGELOG_ENTRY+="\n"
+          fi
+          
+          # Add performance improvements
+          if [ ${#PERFORMANCE[@]} -gt 0 ]; then
+            CHANGELOG_ENTRY+="#### Performance\n"
+            for item in "${PERFORMANCE[@]}"; do
+              CHANGELOG_ENTRY+="- $item\n"
+            done
+            CHANGELOG_ENTRY+="\n"
+          fi
+          
+          # Add refactors
+          if [ ${#REFACTORS[@]} -gt 0 ]; then
+            CHANGELOG_ENTRY+="#### Refactored\n"
+            for item in "${REFACTORS[@]}"; do
+              CHANGELOG_ENTRY+="- $item\n"
+            done
+            CHANGELOG_ENTRY+="\n"
+          fi
+          
+          # Add documentation
+          if [ ${#DOCS[@]} -gt 0 ]; then
+            CHANGELOG_ENTRY+="#### Documentation\n"
+            for item in "${DOCS[@]}"; do
+              CHANGELOG_ENTRY+="- $item\n"
+            done
+            CHANGELOG_ENTRY+="\n"
+          fi
+          
+          # Add build changes
+          if [ ${#BUILDS[@]} -gt 0 ]; then
+            CHANGELOG_ENTRY+="#### Build\n"
+            for item in "${BUILDS[@]}"; do
+              CHANGELOG_ENTRY+="- $item\n"
+            done
+            CHANGELOG_ENTRY+="\n"
+          fi
+          
+          # Add CI changes
+          if [ ${#CI[@]} -gt 0 ]; then
+            CHANGELOG_ENTRY+="#### CI/CD\n"
+            for item in "${CI[@]}"; do
+              CHANGELOG_ENTRY+="- $item\n"
+            done
+            CHANGELOG_ENTRY+="\n"
+          fi
+          
+          # Add tests
+          if [ ${#TESTS[@]} -gt 0 ]; then
+            CHANGELOG_ENTRY+="#### Tests\n"
+            for item in "${TESTS[@]}"; do
+              CHANGELOG_ENTRY+="- $item\n"
+            done
+            CHANGELOG_ENTRY+="\n"
+          fi
+          
+          # Add chores
+          if [ ${#CHORES[@]} -gt 0 ]; then
+            CHANGELOG_ENTRY+="#### Chores\n"
+            for item in "${CHORES[@]}"; do
+              CHANGELOG_ENTRY+="- $item\n"
+            done
+            CHANGELOG_ENTRY+="\n"
+          fi
+          
+          # Add styles
+          if [ ${#STYLES[@]} -gt 0 ]; then
+            CHANGELOG_ENTRY+="#### Styles\n"
+            for item in "${STYLES[@]}"; do
+              CHANGELOG_ENTRY+="- $item\n"
+            done
+            CHANGELOG_ENTRY+="\n"
+          fi
+          
+          # Save to file
+          echo -e "$CHANGELOG_ENTRY" > changelog_entry.md
+          
+          echo "Generated changelog entry:"
+          cat changelog_entry.md
+      
+      - name: Update CHANGELOG.md
+        run: |
+          # Check if CHANGELOG.md exists
+          if [ ! -f CHANGELOG.md ]; then
+            echo "# Changelog" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            echo "## [Unreleased]" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+          fi
+          
+          # Create temporary file
+          TEMP_FILE=$(mktemp)
+          
+          # Find the [Unreleased] section and insert the new entry
+          if grep -q "## \[Unreleased\]" CHANGELOG.md; then
+            # Insert after [Unreleased] header
+            awk '
+              /## \[Unreleased\]/ {
+                print
+                print ""
+                while ((getline line < "changelog_entry.md") > 0) {
+                  print line
+                }
+                print "---"
+                print ""
+                next
+              }
+              {print}
+            ' CHANGELOG.md > "$TEMP_FILE"
+          else
+            # No [Unreleased] section, add it at the top after the main header
+            awk '
+              NR==1 {
+                print
+                print ""
+                print "## [Unreleased]"
+                print ""
+                while ((getline line < "changelog_entry.md") > 0) {
+                  print line
+                }
+                print "---"
+                print ""
+                next
+              }
+              {print}
+            ' CHANGELOG.md > "$TEMP_FILE"
+          fi
+          
+          # Replace original file
+          mv "$TEMP_FILE" CHANGELOG.md
+          
+          echo "Updated CHANGELOG.md:"
+          head -50 CHANGELOG.md
+      
+      - name: Commit and push changes
+        run: |
+          git add CHANGELOG.md
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          
+          git commit -m "docs: update CHANGELOG.md for PR #${{ github.event.pull_request.number }}"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Comment on PR
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const changelogEntry = fs.readFileSync('changelog_entry.md', 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `✅ **Changelog Updated**\n\nThe following entry has been added to CHANGELOG.md:\n\n${changelogEntry}`
+            });
+
