@@ -253,21 +253,67 @@ This directory contains a WordPress Docker-in-Docker (DinD) environment.
 
 2. Create a WordPress instance:
    \`\`\`bash
-   wp-dind exec instance-manager.sh create mysite 80
+   wp-dind exec dind instance-manager.sh create mysite 80 83 nginx
    \`\`\`
 
-3. Start the WordPress instance:
-   \`\`\`bash
-   wp-dind exec instance-manager.sh start mysite
-   \`\`\`
+3. Access your WordPress site:
+   - WordPress: http://localhost:8000 (or next available port)
+   - phpMyAdmin: http://localhost:8080
+   - MailCatcher: http://localhost:1080
 
 ## Available Commands
 
+### Environment Management
 - \`wp-dind start\` - Start the DinD environment
 - \`wp-dind stop\` - Stop the DinD environment
 - \`wp-dind status\` - Check environment status
-- \`wp-dind exec <command>\` - Execute command in DinD container
-- \`wp-dind logs\` - View logs
+- \`wp-dind ps\` - List all containers
+- \`wp-dind logs [-f] [-s service]\` - View logs
+- \`wp-dind destroy\` - Destroy environment (removes all data)
+
+### Execute Commands
+- \`wp-dind exec dind <command>\` - Execute command in DinD host
+- \`wp-dind exec <container> <command>\` - Execute command in specific container
+
+### Examples
+
+**Create WordPress instance:**
+\`\`\`bash
+wp-dind exec dind instance-manager.sh create mysite 80 83 nginx
+# Arguments: name mysql_version php_version webserver
+# mysql_version: 56, 57, 80
+# php_version: 74, 80, 81, 82, 83
+# webserver: nginx, apache
+\`\`\`
+
+**List WordPress instances:**
+\`\`\`bash
+wp-dind exec dind instance-manager.sh list
+\`\`\`
+
+**Execute WP-CLI in a WordPress instance:**
+\`\`\`bash
+wp-dind exec mysite-php wp --info
+wp-dind exec mysite-php wp plugin list
+wp-dind exec mysite-php wp user list
+\`\`\`
+
+**Access MySQL in an instance:**
+\`\`\`bash
+wp-dind exec mysite-mysql mysql -u wordpress -p
+\`\`\`
+
+**View instance logs:**
+\`\`\`bash
+wp-dind exec dind instance-manager.sh logs mysite
+wp-dind exec dind instance-manager.sh logs mysite php
+\`\`\`
+
+**Access container shell:**
+\`\`\`bash
+wp-dind exec -i mysite-php bash
+wp-dind exec -i mysite-mysql bash
+\`\`\`
 
 ## Services
 
@@ -286,7 +332,9 @@ ${answers.includePhpMyAdmin ? '- **phpMyAdmin**: http://localhost:8080\n' : ''}$
         console.log(chalk.yellow('Next steps:'));
         console.log(chalk.gray('  1. cd ' + targetDir));
         console.log(chalk.gray('  2. wp-dind start'));
-        console.log(chalk.gray('  3. wp-dind exec instance-manager.sh create mysite\n'));
+        console.log(chalk.gray('  3. wp-dind exec dind instance-manager.sh create mysite 80 83 nginx'));
+        console.log(chalk.gray('  4. wp-dind ps (to see all containers)'));
+        console.log(chalk.gray('  5. wp-dind exec mysite-php wp --info\n'));
 
         // Save to config
         const config = loadConfig();
@@ -356,13 +404,77 @@ program
     });
 
 program
-    .command('exec <command...>')
-    .description('Execute a command in the DinD container')
+    .command('exec <container> <command...>')
+    .description('Execute a command inside a specific Docker container')
     .option('-d, --dir <directory>', 'Target directory (default: current directory)')
-    .action((command, options) => {
+    .option('-i, --interactive', 'Run in interactive mode (allocate TTY)', false)
+    .option('-u, --user <user>', 'Run as specific user (e.g., www-data, root)')
+    .action((container, command, options) => {
         const targetDir = options.dir ? path.resolve(options.dir) : process.cwd();
-        const cmd = `docker-compose exec wordpress-dind ${command.join(' ')}`;
+
+        // Check if we're targeting the DinD host or a WordPress instance container
+        let dockerCmd;
+
+        if (container === 'dind' || container === 'host') {
+            // Execute in the DinD host container
+            dockerCmd = `docker-compose exec`;
+            if (options.user) dockerCmd += ` -u ${options.user}`;
+            if (!options.interactive) dockerCmd += ` -T`;
+            dockerCmd += ` wordpress-dind ${command.join(' ')}`;
+        } else {
+            // Execute in a WordPress instance container (inside DinD)
+            // Format: <instance-name>-<service> or just <container-name>
+            dockerCmd = `docker-compose exec`;
+            if (!options.interactive) dockerCmd += ` -T`;
+            dockerCmd += ` wordpress-dind docker exec`;
+            if (options.interactive) dockerCmd += ` -it`;
+            if (options.user) dockerCmd += ` -u ${options.user}`;
+            dockerCmd += ` ${container} ${command.join(' ')}`;
+        }
+
+        console.log(chalk.gray(`Executing: ${dockerCmd}\n`));
+        execCommand(dockerCmd, { cwd: targetDir });
+    });
+
+program
+    .command('instance <action> [args...]')
+    .description('Manage WordPress instances (create, start, stop, remove, list, info, logs)')
+    .option('-d, --dir <directory>', 'Target directory (default: current directory)')
+    .action((action, args, options) => {
+        const targetDir = options.dir ? path.resolve(options.dir) : process.cwd();
+
+        const validActions = ['create', 'start', 'stop', 'remove', 'list', 'info', 'logs'];
+        if (!validActions.includes(action)) {
+            console.error(chalk.red(`Invalid action: ${action}`));
+            console.log(chalk.yellow(`Valid actions: ${validActions.join(', ')}`));
+            process.exit(1);
+        }
+
+        const cmd = `docker-compose exec -T wordpress-dind instance-manager.sh ${action} ${args.join(' ')}`;
         execCommand(cmd, { cwd: targetDir });
+    });
+
+program
+    .command('ps')
+    .description('List all containers (DinD host and WordPress instances)')
+    .option('-d, --dir <directory>', 'Target directory (default: current directory)')
+    .option('-a, --all', 'Show all containers (including stopped)')
+    .action((options) => {
+        const targetDir = options.dir ? path.resolve(options.dir) : process.cwd();
+
+        console.log(chalk.blue.bold('WordPress DinD Containers:\n'));
+
+        // Show DinD host container
+        console.log(chalk.yellow('DinD Host Container:'));
+        execCommand('docker-compose ps', { cwd: targetDir });
+
+        // Show WordPress instance containers (inside DinD)
+        console.log(chalk.yellow('\nWordPress Instance Containers (inside DinD):'));
+        const psCmd = options.all ? 'docker ps -a' : 'docker ps';
+        execCommand(`docker-compose exec -T wordpress-dind ${psCmd}`, {
+            cwd: targetDir,
+            ignoreError: true
+        });
     });
 
 program
@@ -371,7 +483,7 @@ program
     .option('-d, --dir <directory>', 'Target directory (default: current directory)')
     .action(async (options) => {
         const targetDir = options.dir ? path.resolve(options.dir) : process.cwd();
-        
+
         const answers = await inquirer.prompt([{
             type: 'confirm',
             name: 'confirm',
