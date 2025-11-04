@@ -70,13 +70,28 @@ function checkDockerCompose() {
     }
 }
 
+function loadWorkspaceConfig(targetDir) {
+    const workspaceFile = path.join(targetDir, 'wp-dind-workspace.json');
+    if (fs.existsSync(workspaceFile)) {
+        return JSON.parse(fs.readFileSync(workspaceFile, 'utf8'));
+    }
+    return null;
+}
+
+function saveWorkspaceConfig(targetDir, config) {
+    const workspaceFile = path.join(targetDir, 'wp-dind-workspace.json');
+    fs.writeFileSync(workspaceFile, JSON.stringify(config, null, 2));
+}
+
 function generateDockerCompose(targetDir, config = {}) {
+    const containerName = config.workspaceName ? `wp-dind-${config.workspaceName}` : `wp-dind-${path.basename(targetDir)}`;
+
     const composeConfig = {
         version: '3.8',
         services: {
             'wordpress-dind': {
                 image: config.dindImage || 'wp-dind:latest',
-                container_name: `wp-dind-${path.basename(targetDir)}`,
+                container_name: containerName,
                 privileged: true,
                 environment: {
                     ENABLE_NETWORK_ISOLATION: 'true',
@@ -87,6 +102,7 @@ function generateDockerCompose(targetDir, config = {}) {
                     '8000-8099:8000-8099'
                 ],
                 volumes: [
+                    './data/wordpress:/var/www/html',
                     './wordpress-instances:/wordpress-instances',
                     './shared-images:/shared-images',
                     'dind-docker-data:/var/lib/docker'
@@ -195,6 +211,21 @@ program
         // Interactive configuration
         const answers = await inquirer.prompt([
             {
+                type: 'input',
+                name: 'workspaceName',
+                message: 'Workspace name:',
+                default: path.basename(targetDir),
+                validate: (input) => {
+                    if (!input || input.trim() === '') {
+                        return 'Workspace name cannot be empty';
+                    }
+                    if (!/^[a-zA-Z0-9_-]+$/.test(input)) {
+                        return 'Workspace name can only contain letters, numbers, hyphens, and underscores';
+                    }
+                    return true;
+                }
+            },
+            {
                 type: 'confirm',
                 name: 'includePhpMyAdmin',
                 message: 'Include phpMyAdmin for database management?',
@@ -210,8 +241,46 @@ program
 
         const spinner = ora('Generating configuration files...').start();
 
+        // Create workspace configuration
+        const workspaceConfig = {
+            workspaceName: answers.workspaceName,
+            initializedAt: new Date().toISOString(),
+            stack: {
+                dindImage: 'wp-dind:latest',
+                phpVersions: ['7.4', '8.0', '8.1', '8.2', '8.3'],
+                mysqlVersions: ['5.6', '5.7', '8.0'],
+                webservers: ['nginx', 'apache'],
+                services: {
+                    phpmyadmin: answers.includePhpMyAdmin,
+                    mailcatcher: answers.includeMailCatcher,
+                    redis: true,
+                    redisCommander: true
+                }
+            },
+            imageVersions: {
+                dind: 'latest',
+                php74: '7.4-fpm-alpine',
+                php80: '8.0-fpm-alpine',
+                php81: '8.1-fpm-alpine',
+                php82: '8.2-fpm-alpine',
+                php83: '8.3-fpm-alpine',
+                mysql56: '5.6',
+                mysql57: '5.7',
+                mysql80: '8.0',
+                nginx: 'alpine',
+                apache: '2.4-alpine',
+                redis: '7.4-alpine',
+                redisCommander: 'latest',
+                phpmyadmin: answers.includePhpMyAdmin ? 'latest' : null,
+                mailcatcher: answers.includeMailCatcher ? 'latest' : null
+            }
+        };
+
+        // Save workspace configuration
+        saveWorkspaceConfig(targetDir, workspaceConfig);
+
         // Create necessary directories
-        const dirs = ['wordpress-instances', 'shared-images', 'logs'];
+        const dirs = ['data/wordpress', 'wordpress-instances', 'shared-images', 'logs'];
         dirs.forEach(dir => {
             const dirPath = path.join(targetDir, dir);
             if (!fs.existsSync(dirPath)) {
@@ -220,7 +289,7 @@ program
         });
 
         // Generate docker-compose.yml
-        const composeContent = generateDockerCompose(targetDir, answers);
+        const composeContent = generateDockerCompose(targetDir, { ...answers, workspaceName: answers.workspaceName });
         fs.writeFileSync(composeFile, composeContent);
 
         // Create .env file
@@ -242,9 +311,31 @@ MAILCATCHER_SMTP_PORT=1025
         // Create README
         const readmeContent = `# WordPress Docker-in-Docker Environment
 
+Workspace: **${workspaceConfig.workspaceName}**
+Initialized: ${new Date(workspaceConfig.initializedAt).toLocaleString()}
+
 This directory contains a WordPress Docker-in-Docker (DinD) environment.
 
 ## Quick Start
+
+### Option 1: Install WordPress in Workspace (data/wordpress)
+
+1. Start the environment:
+   \`\`\`bash
+   wp-dind start
+   \`\`\`
+
+2. Install WordPress:
+   \`\`\`bash
+   wp-dind install-wordpress
+   \`\`\`
+
+3. Access your WordPress site:
+   - WordPress: http://localhost:8000
+   - phpMyAdmin: http://localhost:8080
+   - MailCatcher: http://localhost:1080
+
+### Option 2: Create Isolated WordPress Instances
 
 1. Start the environment:
    \`\`\`bash
@@ -253,13 +344,11 @@ This directory contains a WordPress Docker-in-Docker (DinD) environment.
 
 2. Create a WordPress instance:
    \`\`\`bash
-   wp-dind exec dind instance-manager.sh create mysite 80 83 nginx
+   wp-dind instance create mysite 80 83 nginx
    \`\`\`
 
-3. Access your WordPress site:
-   - WordPress: http://localhost:8000 (or next available port)
-   - phpMyAdmin: http://localhost:8080
-   - MailCatcher: http://localhost:1080
+3. Access your WordPress instance:
+   - WordPress: http://localhost:8001 (or next available port)
 
 ## Available Commands
 
@@ -271,48 +360,54 @@ This directory contains a WordPress Docker-in-Docker (DinD) environment.
 - \`wp-dind logs [-f] [-s service]\` - View logs
 - \`wp-dind destroy\` - Destroy environment (removes all data)
 
+### WordPress Installation
+- \`wp-dind install-wordpress\` - Install WordPress in data/wordpress
+- \`wp-dind install-wordpress --url <url> --title <title>\` - Install with options
+- \`wp-dind install-wordpress --skip-install\` - Download only, skip installation
+
+### Instance Management
+- \`wp-dind instance create <name> [mysql] [php] [webserver]\` - Create instance
+- \`wp-dind instance list\` - List all instances
+- \`wp-dind instance info <name>\` - Show instance info
+- \`wp-dind instance logs <name> [service]\` - View instance logs
+- \`wp-dind instance start/stop <name>\` - Start/stop instance
+- \`wp-dind instance remove <name>\` - Remove instance
+
 ### Execute Commands
 - \`wp-dind exec dind <command>\` - Execute command in DinD host
 - \`wp-dind exec <container> <command>\` - Execute command in specific container
 
 ### Examples
 
+**Install WordPress in workspace:**
+\`\`\`bash
+wp-dind install-wordpress \\
+  --url http://localhost:8000 \\
+  --title "My Site" \\
+  --admin-user admin \\
+  --admin-password mypassword \\
+  --admin-email admin@example.com
+\`\`\`
+
 **Create WordPress instance:**
 \`\`\`bash
-wp-dind exec dind instance-manager.sh create mysite 80 83 nginx
+wp-dind instance create mysite 80 83 nginx
 # Arguments: name mysql_version php_version webserver
 # mysql_version: 56, 57, 80
 # php_version: 74, 80, 81, 82, 83
 # webserver: nginx, apache
 \`\`\`
 
-**List WordPress instances:**
+**Execute WP-CLI commands:**
 \`\`\`bash
-wp-dind exec dind instance-manager.sh list
-\`\`\`
-
-**Execute WP-CLI in a WordPress instance:**
-\`\`\`bash
-wp-dind exec mysite-php wp --info
-wp-dind exec mysite-php wp plugin list
-wp-dind exec mysite-php wp user list
-\`\`\`
-
-**Access MySQL in an instance:**
-\`\`\`bash
-wp-dind exec mysite-mysql mysql -u wordpress -p
-\`\`\`
-
-**View instance logs:**
-\`\`\`bash
-wp-dind exec dind instance-manager.sh logs mysite
-wp-dind exec dind instance-manager.sh logs mysite php
+wp-dind exec dind wp --info
+wp-dind exec dind wp plugin list
+wp-dind exec dind wp user list
 \`\`\`
 
 **Access container shell:**
 \`\`\`bash
-wp-dind exec -i mysite-php bash
-wp-dind exec -i mysite-mysql bash
+wp-dind exec -i dind bash
 \`\`\`
 
 ## Services
@@ -320,21 +415,37 @@ wp-dind exec -i mysite-mysql bash
 ${answers.includePhpMyAdmin ? '- **phpMyAdmin**: http://localhost:8080\n' : ''}${answers.includeMailCatcher ? '- **MailCatcher**: http://localhost:1080\n' : ''}
 ## Directory Structure
 
-- \`wordpress-instances/\` - WordPress instance data
+- \`data/wordpress/\` - Main WordPress installation
+- \`wordpress-instances/\` - Isolated WordPress instances
 - \`shared-images/\` - Shared Docker images
 - \`logs/\` - Application logs
+- \`wp-dind-workspace.json\` - Workspace configuration
+
+## Workspace Configuration
+
+This workspace is configured with:
+- **Stack**: ${workspaceConfig.stack.dindImage}
+- **PHP Versions**: ${workspaceConfig.stack.phpVersions.join(', ')}
+- **MySQL Versions**: ${workspaceConfig.stack.mysqlVersions.join(', ')}
+- **Web Servers**: ${workspaceConfig.stack.webservers.join(', ')}
+- **Services**: ${Object.entries(workspaceConfig.stack.services).filter(([k, v]) => v).map(([k]) => k).join(', ')}
 `;
         fs.writeFileSync(path.join(targetDir, 'README.md'), readmeContent);
 
         spinner.succeed('Configuration files generated successfully!');
 
         console.log(chalk.green('\n✅ WordPress DinD environment initialized!\n'));
+        console.log(chalk.blue.bold('Workspace Information:'));
+        console.log(chalk.gray(`  Name: ${workspaceConfig.workspaceName}`));
+        console.log(chalk.gray(`  Initialized: ${workspaceConfig.initializedAt}`));
+        console.log(chalk.gray(`  Config: wp-dind-workspace.json\n`));
         console.log(chalk.yellow('Next steps:'));
         console.log(chalk.gray('  1. cd ' + targetDir));
         console.log(chalk.gray('  2. wp-dind start'));
-        console.log(chalk.gray('  3. wp-dind exec dind instance-manager.sh create mysite 80 83 nginx'));
-        console.log(chalk.gray('  4. wp-dind ps (to see all containers)'));
-        console.log(chalk.gray('  5. wp-dind exec mysite-php wp --info\n'));
+        console.log(chalk.gray('  3. wp-dind install-wordpress (install WordPress in data/wordpress)'));
+        console.log(chalk.gray('  OR'));
+        console.log(chalk.gray('  3. wp-dind instance create mysite 80 83 nginx (create isolated instance)'));
+        console.log(chalk.gray('  4. wp-dind ps (to see all containers)\n'));
 
         // Save to config
         const config = loadConfig();
@@ -475,6 +586,164 @@ program
             cwd: targetDir,
             ignoreError: true
         });
+    });
+
+program
+    .command('install-wordpress')
+    .description('Install WordPress in the wp-dind workspace (data/wordpress)')
+    .option('-d, --dir <directory>', 'Target directory (default: current directory)')
+    .option('--url <url>', 'WordPress site URL')
+    .option('--title <title>', 'WordPress site title')
+    .option('--admin-user <user>', 'WordPress admin username')
+    .option('--admin-password <password>', 'WordPress admin password')
+    .option('--admin-email <email>', 'WordPress admin email')
+    .option('--skip-install', 'Only download WordPress, skip installation')
+    .action(async (options) => {
+        const targetDir = options.dir ? path.resolve(options.dir) : process.cwd();
+
+        // Check if workspace is initialized
+        const workspaceConfig = loadWorkspaceConfig(targetDir);
+        if (!workspaceConfig) {
+            console.error(chalk.red('This directory is not initialized as a wp-dind workspace.'));
+            console.log(chalk.yellow('Run "wp-dind init" first.'));
+            process.exit(1);
+        }
+
+        // Check if WordPress is already installed
+        const wpPath = path.join(targetDir, 'data/wordpress');
+        const wpConfigPath = path.join(wpPath, 'wp-config.php');
+
+        if (fs.existsSync(wpConfigPath) && !options.skipInstall) {
+            const answers = await inquirer.prompt([{
+                type: 'confirm',
+                name: 'overwrite',
+                message: 'WordPress appears to be already installed. Reinstall?',
+                default: false
+            }]);
+
+            if (!answers.overwrite) {
+                console.log(chalk.yellow('Installation cancelled.'));
+                process.exit(0);
+            }
+        }
+
+        console.log(chalk.blue.bold('\n📦 Installing WordPress\n'));
+        console.log(chalk.gray(`Workspace: ${workspaceConfig.workspaceName}`));
+        console.log(chalk.gray(`Target: data/wordpress\n`));
+
+        const spinner = ora('Downloading WordPress...').start();
+
+        try {
+            // Download WordPress
+            const downloadCmd = `docker-compose exec -T wordpress-dind sh -c "cd /var/www/html && wp core download --allow-root --force"`;
+            execCommand(downloadCmd, { cwd: targetDir, silent: true });
+
+            spinner.succeed('WordPress downloaded successfully');
+
+            if (options.skipInstall) {
+                console.log(chalk.green('\n✅ WordPress downloaded to data/wordpress'));
+                console.log(chalk.yellow('\nNext steps:'));
+                console.log(chalk.gray('  1. Configure your database settings'));
+                console.log(chalk.gray('  2. Run the WordPress installation manually\n'));
+                return;
+            }
+
+            // Interactive configuration if not provided
+            let installConfig = {
+                url: options.url,
+                title: options.title,
+                adminUser: options.adminUser,
+                adminPassword: options.adminPassword,
+                adminEmail: options.adminEmail
+            };
+
+            const questions = [];
+
+            if (!installConfig.url) {
+                questions.push({
+                    type: 'input',
+                    name: 'url',
+                    message: 'WordPress site URL:',
+                    default: 'http://localhost:8000',
+                    validate: (input) => input.trim() !== '' || 'URL is required'
+                });
+            }
+
+            if (!installConfig.title) {
+                questions.push({
+                    type: 'input',
+                    name: 'title',
+                    message: 'Site title:',
+                    default: workspaceConfig.workspaceName,
+                    validate: (input) => input.trim() !== '' || 'Title is required'
+                });
+            }
+
+            if (!installConfig.adminUser) {
+                questions.push({
+                    type: 'input',
+                    name: 'adminUser',
+                    message: 'Admin username:',
+                    default: 'admin',
+                    validate: (input) => input.trim() !== '' || 'Username is required'
+                });
+            }
+
+            if (!installConfig.adminPassword) {
+                questions.push({
+                    type: 'password',
+                    name: 'adminPassword',
+                    message: 'Admin password:',
+                    validate: (input) => input.length >= 8 || 'Password must be at least 8 characters'
+                });
+            }
+
+            if (!installConfig.adminEmail) {
+                questions.push({
+                    type: 'input',
+                    name: 'adminEmail',
+                    message: 'Admin email:',
+                    default: 'admin@example.com',
+                    validate: (input) => {
+                        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                        return emailRegex.test(input) || 'Invalid email address';
+                    }
+                });
+            }
+
+            if (questions.length > 0) {
+                const answers = await inquirer.prompt(questions);
+                installConfig = { ...installConfig, ...answers };
+            }
+
+            // Create wp-config.php
+            spinner.start('Creating wp-config.php...');
+            const configCmd = `docker-compose exec -T wordpress-dind sh -c "cd /var/www/html && wp config create --dbname=wordpress --dbuser=root --dbpass=rootpassword --dbhost=localhost --allow-root --force"`;
+            execCommand(configCmd, { cwd: targetDir, silent: true });
+            spinner.succeed('wp-config.php created');
+
+            // Install WordPress
+            spinner.start('Installing WordPress...');
+            const installCmd = `docker-compose exec -T wordpress-dind sh -c "cd /var/www/html && wp core install --url='${installConfig.url}' --title='${installConfig.title}' --admin_user='${installConfig.adminUser}' --admin_password='${installConfig.adminPassword}' --admin_email='${installConfig.adminEmail}' --allow-root"`;
+            execCommand(installCmd, { cwd: targetDir, silent: true });
+            spinner.succeed('WordPress installed successfully');
+
+            console.log(chalk.green('\n✅ WordPress installation complete!\n'));
+            console.log(chalk.blue.bold('Access Information:'));
+            console.log(chalk.gray(`  URL: ${installConfig.url}`));
+            console.log(chalk.gray(`  Admin User: ${installConfig.adminUser}`));
+            console.log(chalk.gray(`  Admin Email: ${installConfig.adminEmail}\n`));
+            console.log(chalk.yellow('Next steps:'));
+            console.log(chalk.gray('  1. Visit your WordPress site'));
+            console.log(chalk.gray('  2. Log in with your admin credentials'));
+            console.log(chalk.gray('  3. Start building your site!\n'));
+
+        } catch (error) {
+            spinner.fail('Installation failed');
+            console.error(chalk.red('\nError during installation:'));
+            console.error(error.message);
+            process.exit(1);
+        }
     });
 
 program

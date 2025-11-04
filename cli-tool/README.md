@@ -39,12 +39,20 @@ wp-dind init
 wp-dind start
 ```
 
-3. **Create a WordPress instance:**
+3. **Install WordPress (Option 1 - Workspace Installation):**
+
+```bash
+wp-dind install-wordpress
+```
+
+This installs WordPress in `data/wordpress` directory.
+
+**OR**
+
+**Create isolated WordPress instances (Option 2):**
 
 ```bash
 wp-dind instance create mysite 80 83 nginx
-# Or use the full command:
-wp-dind exec dind instance-manager.sh create mysite 80 83 nginx
 ```
 
 4. **List containers:**
@@ -53,31 +61,49 @@ wp-dind exec dind instance-manager.sh create mysite 80 83 nginx
 wp-dind ps
 ```
 
-5. **Execute commands in containers:**
+5. **Execute commands:**
 
 ```bash
-# WP-CLI in PHP container
-wp-dind exec mysite-php wp --info
+# WP-CLI in workspace WordPress
+wp-dind exec dind wp --info
 
-# Access MySQL
-wp-dind exec -i mysite-mysql bash
+# WP-CLI in instance container
+wp-dind exec mysite-php wp --info
 ```
 
 ## Commands
 
 ### `wp-dind init`
 
-Initialize a WordPress DinD environment in the current directory.
+Initialize a WordPress DinD environment in the current directory. This creates a workspace configuration file (`wp-dind-workspace.json`) that stores information about your stack, image versions, and initialization date.
 
 **Options:**
 - `-d, --dir <directory>` - Target directory (default: current directory)
 - `--with-phpmyadmin` - Include phpMyAdmin service
 - `--with-mailcatcher` - Include MailCatcher service
 
+**What it creates:**
+- `wp-dind-workspace.json` - Workspace configuration
+- `docker-compose.yml` - Docker Compose configuration
+- `.env` - Environment variables
+- `data/wordpress/` - WordPress installation directory
+- `wordpress-instances/` - Isolated instances directory
+- `shared-images/` - Shared Docker images
+- `logs/` - Application logs
+- `README.md` - Quick reference guide
+
 **Example:**
 ```bash
 wp-dind init --with-phpmyadmin --with-mailcatcher
 ```
+
+**Workspace Configuration:**
+The `wp-dind-workspace.json` file contains:
+- Workspace name (defaults to directory name)
+- Initialization timestamp (UTC)
+- Stack configuration (PHP versions, MySQL versions, web servers)
+- Image versions used
+- Enabled services
 
 ### `wp-dind start`
 
@@ -129,6 +155,46 @@ View logs from the WordPress DinD environment.
 wp-dind logs -f
 wp-dind logs -s wordpress-dind
 ```
+
+### `wp-dind install-wordpress`
+
+Install WordPress in the workspace (data/wordpress directory). This command downloads WordPress and optionally installs it with your configuration.
+
+**Options:**
+- `-d, --dir <directory>` - Target directory (default: current directory)
+- `--url <url>` - WordPress site URL (default: http://localhost:8000)
+- `--title <title>` - WordPress site title (default: workspace name)
+- `--admin-user <user>` - WordPress admin username (default: admin)
+- `--admin-password <password>` - WordPress admin password (required, min 8 chars)
+- `--admin-email <email>` - WordPress admin email (default: admin@example.com)
+- `--skip-install` - Only download WordPress, skip installation
+
+**Examples:**
+```bash
+# Interactive installation (prompts for all options)
+wp-dind install-wordpress
+
+# Install with all options specified
+wp-dind install-wordpress \
+  --url http://localhost:8000 \
+  --title "My WordPress Site" \
+  --admin-user admin \
+  --admin-password mySecurePassword123 \
+  --admin-email admin@example.com
+
+# Download only, skip installation
+wp-dind install-wordpress --skip-install
+```
+
+**What it does:**
+1. Downloads latest WordPress to `data/wordpress/`
+2. Creates `wp-config.php` with database settings
+3. Installs WordPress with your configuration
+4. Displays access information
+
+**Requirements:**
+- DinD environment must be running (`wp-dind start`)
+- Workspace must be initialized (`wp-dind init`)
 
 ### `wp-dind exec <container> <command>`
 
@@ -331,7 +397,55 @@ wp-dind start -d ~/projects/client-a
 wp-dind status -d ~/projects/client-b
 ```
 
-### Development Workflow
+### Development Workflow - Workspace WordPress
+
+```bash
+# Initialize environment
+wp-dind init --with-phpmyadmin --with-mailcatcher
+
+# Start environment
+wp-dind start
+
+# Install WordPress in workspace
+wp-dind install-wordpress \
+  --url http://localhost:8000 \
+  --title "My Dev Site" \
+  --admin-user admin \
+  --admin-password mypassword \
+  --admin-email admin@example.com
+
+# Access WordPress
+# URL: http://localhost:8000
+# phpMyAdmin: http://localhost:8080
+# MailCatcher: http://localhost:1080
+
+# Install plugins using WP-CLI
+wp-dind exec dind wp plugin install woocommerce --activate --allow-root
+wp-dind exec dind wp plugin install redis-cache --activate --allow-root
+
+# List plugins
+wp-dind exec dind wp plugin list --allow-root
+
+# Create users
+wp-dind exec dind wp user create editor editor@example.com \
+  --role=editor \
+  --user_pass=password \
+  --allow-root
+
+# Export database
+wp-dind exec dind wp db export /var/www/html/backup.sql --allow-root
+
+# View logs
+wp-dind logs -f
+
+# Access container shell
+wp-dind exec -i dind bash
+
+# When done
+wp-dind stop
+```
+
+### Development Workflow - Isolated Instances
 
 ```bash
 # Initialize environment
@@ -349,9 +463,9 @@ wp-dind ps
 # Get instance info (shows URL, credentials, etc.)
 wp-dind instance info dev
 
-# Install WordPress
+# Install WordPress in instance
 wp-dind exec dev-php wp core install \
-  --url=http://localhost:8000 \
+  --url=http://localhost:8001 \
   --title="Dev Site" \
   --admin_user=admin \
   --admin_password=password \
@@ -416,20 +530,39 @@ The CLI tool stores configuration in `~/.wp-dind-config.json`:
 
 | Command | Description |
 |---------|-------------|
-| `wp-dind init` | Initialize new environment |
+| `wp-dind init` | Initialize new workspace |
 | `wp-dind start` | Start environment |
 | `wp-dind stop` | Stop environment |
 | `wp-dind status` | Check status |
 | `wp-dind ps [-a]` | List containers |
 | `wp-dind logs [-f] [-s service]` | View logs |
+| `wp-dind install-wordpress` | Install WordPress in workspace |
 | `wp-dind exec <container> <cmd>` | Execute command in container |
-| `wp-dind instance create <name> [mysql] [php] [web]` | Create instance |
+| `wp-dind instance create <name> [mysql] [php] [web]` | Create isolated instance |
 | `wp-dind instance list` | List instances |
 | `wp-dind instance info <name>` | Show instance info |
 | `wp-dind instance logs <name> [service]` | View instance logs |
 | `wp-dind instance start/stop <name>` | Start/stop instance |
 | `wp-dind instance remove <name>` | Remove instance |
 | `wp-dind destroy` | Destroy environment |
+
+## Workspace vs Instances
+
+### Workspace WordPress (data/wordpress)
+- **Single WordPress installation** in the workspace
+- Installed with `wp-dind install-wordpress`
+- Located in `data/wordpress/` directory
+- Accessed via `wp-dind exec dind wp ...`
+- Ideal for single-site development
+- Shares the DinD container resources
+
+### Isolated Instances (wordpress-instances/)
+- **Multiple independent WordPress sites**
+- Created with `wp-dind instance create`
+- Each has its own PHP, MySQL, and web server containers
+- Accessed via `wp-dind exec <instance-name>-php wp ...`
+- Ideal for testing different PHP/MySQL versions
+- Complete isolation between instances
 
 ## Requirements
 
