@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+#### CLI Tool
+- **npm scripts** in `cli-tool/package.json` for convenient command shortcuts:
+  - `npm run init` - Initialize WordPress DinD environment
+  - `npm run start` - Start the WordPress DinD environment
+  - `npm run install` - Install WordPress in the workspace
+
+---
+
 ## [2.0.0] - 2025-11-03
 
 ### Major Enhancements
