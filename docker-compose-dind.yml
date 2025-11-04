@@ -2,18 +2,32 @@ version: '3.8'
 
 services:
   wordpress-dind:
-    image: wp-dind:latest
-    container_name: wordpress-dind-host
+    image: wp-dind:${DIND_IMAGE_TAG:-latest}
+    container_name: ${DIND_CONTAINER_NAME:-wordpress-dind-host}
     privileged: true
+    env_file:
+      - .env
     environment:
       - DOCKER_TLS_CERTDIR=
       - ENABLE_NETWORK_ISOLATION=true
+      # Pass DinD configuration to container
+      - DEFAULT_MYSQL_VERSION=${DEFAULT_MYSQL_VERSION:-80}
+      - DEFAULT_PHP_VERSION=${DEFAULT_PHP_VERSION:-83}
+      - DEFAULT_WEBSERVER=${DEFAULT_WEBSERVER:-nginx}
+      - DEFAULT_DB_NAME=${DEFAULT_DB_NAME:-wordpress}
+      - DEFAULT_DB_USER=${DEFAULT_DB_USER:-wordpress}
+      # Pass WordPress defaults to container
+      - WORDPRESS_WEBSITE_TITLE=${WORDPRESS_WEBSITE_TITLE:-My WordPress Site}
+      - WORDPRESS_ADMIN_USER=${WORDPRESS_ADMIN_USER:-admin}
+      - WORDPRESS_ADMIN_PASSWORD=${WORDPRESS_ADMIN_PASSWORD:-change-this-password}
+      - WORDPRESS_ADMIN_EMAIL=${WORDPRESS_ADMIN_EMAIL:-admin@example.com}
+      - WORDPRESS_LOCALE=${WORDPRESS_LOCALE:-en_US}
     ports:
-      - "2375:2375"           # Docker daemon
-      - "8000-8099:8000-8099" # WordPress instances
-      - "8080:8080"           # phpMyAdmin (inside DinD)
-      - "1080:1080"           # MailCatcher Web UI (inside DinD)
-      - "1025:1025"           # MailCatcher SMTP (inside DinD)
+      - "${DOCKER_DAEMON_PORT:-2375}:2375"                                                    # Docker daemon
+      - "${WP_INSTANCE_PORT_RANGE_START:-8000}-${WP_INSTANCE_PORT_RANGE_END:-8099}:8000-8099" # WordPress instances
+      - "${PHPMYADMIN_PORT:-8080}:8080"                                                       # phpMyAdmin (inside DinD)
+      - "${MAIL_CATCHER_HTTP_PORT:-1080}:1080"                                                # MailCatcher Web UI (inside DinD)
+      - "${MAIL_CATCHER_SMTP_PORT:-1025}:1025"                                                # MailCatcher SMTP (inside DinD)
     volumes:
       - wordpress-instances:/wordpress-instances
       - dind-docker-data:/var/lib/docker
@@ -35,7 +49,7 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.19.0.0/16
+        - subnet: ${DIND_NETWORK_SUBNET:-172.19.0.0/16}
 
 volumes:
   wordpress-instances:

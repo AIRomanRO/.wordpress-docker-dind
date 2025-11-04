@@ -6,6 +6,13 @@ NETWORK_PREFIX="wp-network"
 HOST_CONFIG_DIR="/host-config"
 HOST_LOGS_DIR="/host-logs"
 
+# Default values from environment variables (set in docker-compose-dind.yml from .env)
+DEFAULT_MYSQL_VERSION="${DEFAULT_MYSQL_VERSION:-80}"
+DEFAULT_PHP_VERSION="${DEFAULT_PHP_VERSION:-83}"
+DEFAULT_WEBSERVER="${DEFAULT_WEBSERVER:-nginx}"
+DEFAULT_DB_NAME="${DEFAULT_DB_NAME:-wordpress}"
+DEFAULT_DB_USER="${DEFAULT_DB_USER:-wordpress}"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -22,9 +29,9 @@ Usage: $0 <command> [options]
 Commands:
     create <name> [mysql_version] [php_version] [webserver]
                                      Create a new WordPress instance
-                                     mysql_version: 56, 57, 80 (default: 80)
-                                     php_version: 74, 80, 81, 82, 83 (default: 83)
-                                     webserver: nginx, apache (default: nginx)
+                                     mysql_version: 56, 57, 80 (default: ${DEFAULT_MYSQL_VERSION})
+                                     php_version: 74, 80, 81, 82, 83 (default: ${DEFAULT_PHP_VERSION})
+                                     webserver: nginx, apache (default: ${DEFAULT_WEBSERVER})
 
     start <name>                     Start a WordPress instance
 
@@ -55,9 +62,9 @@ EOF
 # Function to create a new WordPress instance
 create_instance() {
     local name=$1
-    local mysql_version=${2:-80}
-    local php_version=${3:-83}
-    local webserver=${4:-nginx}
+    local mysql_version=${2:-$DEFAULT_MYSQL_VERSION}
+    local php_version=${3:-$DEFAULT_PHP_VERSION}
+    local webserver=${4:-$DEFAULT_WEBSERVER}
     local instance_dir="${INSTANCES_DIR}/${name}"
 
     if [ -d "$instance_dir" ]; then
@@ -161,8 +168,8 @@ services:
     container_name: ${name}-mysql
     environment:
       MYSQL_ROOT_PASSWORD: ${db_root_password}
-      MYSQL_DATABASE: wordpress
-      MYSQL_USER: wordpress
+      MYSQL_DATABASE: ${DEFAULT_DB_NAME}
+      MYSQL_USER: ${DEFAULT_DB_USER}
       MYSQL_PASSWORD: ${db_password}
     volumes:
       - ./data/mysql:/var/lib/mysql
@@ -180,9 +187,9 @@ services:
       - mysql
     environment:
       WORDPRESS_DB_HOST: mysql:3306
-      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_USER: ${DEFAULT_DB_USER}
       WORDPRESS_DB_PASSWORD: ${db_password}
-      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_NAME: ${DEFAULT_DB_NAME}
     volumes:
       - ./data/wordpress:/var/www/html
       - ${HOST_CONFIG_DIR}/php/${php_version}:/host-php-config:ro

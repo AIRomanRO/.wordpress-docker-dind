@@ -9,6 +9,13 @@ NC='\033[0m' # No Color
 
 INSTANCES_DIR="/wordpress-instances"
 
+# Default values from environment variables (set in docker-compose-dind.yml from .env)
+DEFAULT_SITE_TITLE="${WORDPRESS_WEBSITE_TITLE:-My WordPress Site}"
+DEFAULT_ADMIN_USER="${WORDPRESS_ADMIN_USER:-admin}"
+DEFAULT_ADMIN_EMAIL="${WORDPRESS_ADMIN_EMAIL:-admin@example.com}"
+DEFAULT_ADMIN_PASSWORD="${WORDPRESS_ADMIN_PASSWORD:-}"  # Empty means generate random
+DEFAULT_LOCALE="${WORDPRESS_LOCALE:-en_US}"
+
 # Function to print colored messages
 print_info() {
     echo -e "${GREEN}[INFO]${NC} $1"
@@ -103,19 +110,25 @@ install_wordpress() {
         site_url="http://localhost"
     fi
     
-    # Prompt for site details
+    # Prompt for site details (with defaults from .env)
     print_info "WordPress installation details:"
-    read -p "Site Title [My WordPress Site]: " site_title
-    site_title=${site_title:-"My WordPress Site"}
-    
-    read -p "Admin Username [admin]: " admin_user
-    admin_user=${admin_user:-"admin"}
-    
-    read -p "Admin Email [admin@example.com]: " admin_email
-    admin_email=${admin_email:-"admin@example.com"}
-    
-    # Generate random password
-    admin_password=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
+    read -p "Site Title [${DEFAULT_SITE_TITLE}]: " site_title
+    site_title=${site_title:-"${DEFAULT_SITE_TITLE}"}
+
+    read -p "Admin Username [${DEFAULT_ADMIN_USER}]: " admin_user
+    admin_user=${admin_user:-"${DEFAULT_ADMIN_USER}"}
+
+    read -p "Admin Email [${DEFAULT_ADMIN_EMAIL}]: " admin_email
+    admin_email=${admin_email:-"${DEFAULT_ADMIN_EMAIL}"}
+
+    # Use password from .env or generate random one
+    if [ -n "$DEFAULT_ADMIN_PASSWORD" ] && [ "$DEFAULT_ADMIN_PASSWORD" != "change-this-password" ]; then
+        admin_password="$DEFAULT_ADMIN_PASSWORD"
+        print_info "Using admin password from configuration"
+    else
+        admin_password=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
+        print_info "Generated random admin password"
+    fi
     
     print_info "Installing WordPress..."
     wp core install \
