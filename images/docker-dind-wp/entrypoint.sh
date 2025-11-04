@@ -67,6 +67,36 @@ done
 
 echo "MailCatcher is ready!"
 
+# Wait for Redis to be ready
+echo "Waiting for Redis to start..."
+timeout=30
+counter=0
+until nc -z 127.0.0.1 6379 >/dev/null 2>&1; do
+    sleep 1
+    counter=$((counter + 1))
+    if [ $counter -ge $timeout ]; then
+        echo "WARNING: Redis may not have started properly"
+        break
+    fi
+done
+
+echo "Redis is ready!"
+
+# Wait for Redis Commander to be ready
+echo "Waiting for Redis Commander to start..."
+timeout=30
+counter=0
+until nc -z 127.0.0.1 8081 >/dev/null 2>&1; do
+    sleep 1
+    counter=$((counter + 1))
+    if [ $counter -ge $timeout ]; then
+        echo "WARNING: Redis Commander may not have started properly"
+        break
+    fi
+done
+
+echo "Redis Commander is ready!"
+
 # Setup network isolation if enabled
 if [ "${ENABLE_NETWORK_ISOLATION}" = "true" ]; then
     echo "Setting up network isolation..."
@@ -106,6 +136,8 @@ echo "  - Docker daemon (port 2375)"
 echo "  - phpMyAdmin (port 8080) - http://localhost:8080"
 echo "  - MailCatcher Web UI (port 1080) - http://localhost:1080"
 echo "  - MailCatcher SMTP (port 1025)"
+echo "  - Redis (port 6379)"
+echo "  - Redis Commander (port 8081) - http://localhost:8081 (admin/admin)"
 echo ""
 echo "Available commands:"
 echo "  - docker ps                    : List running containers"

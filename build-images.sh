@@ -70,6 +70,14 @@ build_image "./images/phpMyAdmin" "wp-phpmyadmin" "5.2.3"
 echo -e "${BLUE}Building MailCatcher image...${NC}"
 build_image "./images/mailCatcher" "wp-mailcatcher" "0.10.0"
 
+# Build Redis image
+echo -e "${BLUE}Building Redis image...${NC}"
+build_image "./images/redis" "wp-redis" "7.4" "7" "latest"
+
+# Build Redis Commander image
+echo -e "${BLUE}Building Redis Commander image...${NC}"
+build_image "./images/redis-commander" "wp-redis-commander" "latest"
+
 # Build Docker-in-Docker image
 echo -e "${BLUE}Building Docker-in-Docker image...${NC}"
 build_image "./images/docker-dind-wp" "wp-dind" "27.0" "27"
@@ -79,7 +87,7 @@ echo -e "${GREEN}All images built successfully!${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 echo -e "${YELLOW}Available images:${NC}"
-docker images | grep -E "wp-mysql|wp-php|wp-nginx|wp-apache|wp-phpmyadmin|wp-mailcatcher|wp-dind" | sort
+docker images | grep -E "wp-mysql|wp-php|wp-nginx|wp-apache|wp-phpmyadmin|wp-mailcatcher|wp-redis|wp-dind" | sort
 
 echo ""
 echo -e "${BLUE}Image Summary:${NC}"
@@ -95,6 +103,8 @@ echo -e "  • wp-nginx:1.27, wp-nginx:1.27-alpine, wp-nginx:latest"
 echo -e "  • wp-apache:2.4, wp-apache:2.4-alpine, wp-apache:latest"
 echo -e "  • wp-phpmyadmin:5.2.3, wp-phpmyadmin:latest"
 echo -e "  • wp-mailcatcher:0.10.0, wp-mailcatcher:latest"
+echo -e "  • wp-redis:7.4, wp-redis:7, wp-redis:latest"
+echo -e "  • wp-redis-commander:latest"
 echo -e "  • wp-dind:27.0, wp-dind:27, wp-dind:latest"
 echo ""
 echo -e "${GREEN}To start the environment, run:${NC}"

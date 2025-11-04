@@ -39,10 +39,16 @@ RUN apk add --no-cache \
     php83-mbstring \
     php83-gd \
     nginx \
-    supervisor
+    supervisor \
+    redis \
+    nodejs \
+    npm
 
 # Install MailCatcher
 RUN gem install mailcatcher --no-document
+
+# Install Redis Commander
+RUN npm install -g redis-commander
 
 # Install WP-CLI
 RUN curl -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && \
@@ -72,7 +78,10 @@ RUN mkdir -p /wordpress-instances \
     /app \
     /var/log/supervisor \
     /run/nginx \
-    /run/php-fpm
+    /run/php-fpm \
+    /etc/redis \
+    /data/redis && \
+    chown redis:redis /data/redis
 
 # Copy application files
 COPY entrypoint.sh /app/
@@ -82,6 +91,7 @@ COPY install-wordpress.sh /app/
 COPY supervisord.conf /etc/supervisord.conf
 COPY nginx-phpmyadmin.conf /etc/nginx/http.d/phpmyadmin.conf
 COPY phpmyadmin-config.inc.php /var/www/phpmyadmin/config.inc.php
+COPY redis.conf /etc/redis/redis.conf
 
 # Copy configuration templates
 COPY config-templates/ /app/config-templates/
@@ -92,7 +102,7 @@ RUN chmod +x /app/*.sh
 WORKDIR /app
 
 # Expose Docker daemon port and service ports
-EXPOSE 2375 2376 8080 1080 1025
+EXPOSE 2375 2376 8080 1080 1025 6379 8081
 
 # Use custom entrypoint
 ENTRYPOINT ["/app/entrypoint.sh"]

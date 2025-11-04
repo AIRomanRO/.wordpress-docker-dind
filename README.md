@@ -38,6 +38,8 @@ A comprehensive Docker-in-Docker setup for hosting multiple WordPress instances 
 - **Integrated Services** (running inside DinD):
     - phpMyAdmin for database management (port 8080)
     - MailCatcher for email testing (ports 1080/1025)
+    - Redis for caching and session storage (port 6379)
+    - Redis Commander for Redis management (port 8082)
 - **Flexible Configuration**: Three-layer config system (built-in → host → instance-specific)
 - **Organized Data Structure**: Clean separation of data, config, and logs per instance
 - **Version-Tagged Images**: All images use specific version tags for reproducibility
@@ -382,6 +384,21 @@ All services run inside the DinD container for better isolation and resource man
 - **SMTP**: localhost:1025
 - **Purpose**: Email testing and debugging
 - **Version**: 0.10.0
+
+### Redis
+- **Port**: localhost:6379
+- **Purpose**: Caching and session storage for WordPress instances
+- **Version**: 7.4
+- **Location**: Runs inside DinD container
+- **Configuration**: 256MB max memory, LRU eviction policy
+- **Persistence**: RDB snapshots + AOF (Append Only File)
+
+### Redis Commander
+- **Web UI**: http://localhost:8082
+- **Purpose**: Visual interface for managing and viewing Redis data
+- **Version**: Latest
+- **Credentials**: admin / admin
+- **Features**: Browse keys, view values, execute commands, monitor stats
 
 ## 🔐 Security Considerations
 
