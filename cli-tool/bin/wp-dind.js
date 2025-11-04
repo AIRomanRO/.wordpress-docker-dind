@@ -90,7 +90,7 @@ function generateDockerCompose(targetDir, config = {}) {
         version: '3.8',
         services: {
             'wordpress-dind': {
-                image: config.dindImage || 'wp-dind:latest',
+                image: config.dindImage || 'airoman/wp-dind:dind-27.0.3',
                 container_name: containerName,
                 privileged: true,
                 environment: {
@@ -246,7 +246,7 @@ program
             workspaceName: answers.workspaceName,
             initializedAt: new Date().toISOString(),
             stack: {
-                dindImage: 'wp-dind:latest',
+                dindImage: 'airoman/wp-dind:dind-27.0.3',
                 phpVersions: ['7.4', '8.0', '8.1', '8.2', '8.3'],
                 mysqlVersions: ['5.6', '5.7', '8.0'],
                 webservers: ['nginx', 'apache'],
@@ -258,21 +258,21 @@ program
                 }
             },
             imageVersions: {
-                dind: 'latest',
-                php74: '7.4-fpm-alpine',
-                php80: '8.0-fpm-alpine',
-                php81: '8.1-fpm-alpine',
-                php82: '8.2-fpm-alpine',
-                php83: '8.3-fpm-alpine',
-                mysql56: '5.6',
-                mysql57: '5.7',
-                mysql80: '8.0',
-                nginx: 'alpine',
-                apache: '2.4-alpine',
-                redis: '7.4-alpine',
-                redisCommander: 'latest',
-                phpmyadmin: answers.includePhpMyAdmin ? 'latest' : null,
-                mailcatcher: answers.includeMailCatcher ? 'latest' : null
+                dind: '27.0.3',
+                php74: '7.4.33',
+                php80: '8.0.30',
+                php81: '8.1.31',
+                php82: '8.2.26',
+                php83: '8.3.14',
+                mysql56: '5.6.51',
+                mysql57: '5.7.44',
+                mysql80: '8.0.40',
+                nginx: '1.27.3',
+                apache: '2.4.62',
+                redis: '7.4.1',
+                redisCommander: '0.8.1',
+                phpmyadmin: answers.includePhpMyAdmin ? '5.2.3' : null,
+                mailcatcher: answers.includeMailCatcher ? '0.10.0' : null
             }
         };
 

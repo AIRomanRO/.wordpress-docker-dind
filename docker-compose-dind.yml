@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   wordpress-dind:
-    image: wp-dind:${DIND_IMAGE_TAG:-latest}
+    image: airoman/wp-dind:${DIND_IMAGE_TAG:-dind-27.0.3}
     container_name: ${DIND_CONTAINER_NAME:-wordpress-dind-host}
     privileged: true
     env_file:

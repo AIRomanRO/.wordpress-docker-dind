@@ -6,6 +6,7 @@
   "scripts": {
     "setup": "npm run build:images && npm run install:cli",
     "build:images": "chmod +x build-images.sh && ./build-images.sh",
+    "push:images": "chmod +x push-images.sh && ./push-images.sh",
     "install:cli": "cd cli-tool && npm install && npm install -g .",
     "uninstall:cli": "npm uninstall -g wp-dind-cli",
     "start": "docker-compose -f docker-compose-dind.yml up -d",

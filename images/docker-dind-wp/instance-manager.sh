@@ -81,7 +81,26 @@ create_instance() {
     echo -e "${GREEN}Creating WordPress instance: ${name}${NC}"
     echo -e "${YELLOW}  MySQL: ${mysql_version}, PHP: ${php_version}, Web Server: ${webserver}${NC}"
 
-    # Map version codes to full versions for directory names
+    # Map version codes to semantic versions for Docker images
+    local mysql_image_version
+    case $mysql_version in
+        56) mysql_image_version="5.6.51" ;;
+        57) mysql_image_version="5.7.44" ;;
+        80) mysql_image_version="8.0.40" ;;
+        *) mysql_image_version="8.0.40" ;;
+    esac
+
+    local php_image_version
+    case $php_version in
+        74) php_image_version="7.4.33" ;;
+        80) php_image_version="8.0.30" ;;
+        81) php_image_version="8.1.31" ;;
+        82) php_image_version="8.2.26" ;;
+        83) php_image_version="8.3.14" ;;
+        *) php_image_version="8.3.14" ;;
+    esac
+
+    # Map version codes to major.minor for directory names
     local mysql_full_version
     case $mysql_version in
         56) mysql_full_version="5.6" ;;
@@ -100,11 +119,14 @@ create_instance() {
         *) php_full_version="8.3" ;;
     esac
 
+    local nginx_version="1.27.3"
+    local apache_version="2.4.62"
+
     local webserver_version
     if [ "$webserver" = "nginx" ]; then
-        webserver_version="1.27"
+        webserver_version="$nginx_version"
     else
-        webserver_version="2.4"
+        webserver_version="$apache_version"
     fi
 
     # Create instance directory structure (only data, configs and logs are on host)
@@ -164,7 +186,7 @@ version: '3.8'
 
 services:
   mysql:
-    image: wp-mysql:${mysql_version}
+    image: airoman/wp-dind:mysql-${mysql_image_version}
     container_name: ${name}-mysql
     environment:
       MYSQL_ROOT_PASSWORD: ${db_root_password}
@@ -181,7 +203,7 @@ services:
     restart: unless-stopped
 
   php:
-    image: wp-php:${php_version}
+    image: airoman/wp-dind:php-${php_image_version}
     container_name: ${name}-php
     depends_on:
       - mysql
@@ -200,7 +222,7 @@ services:
     restart: unless-stopped
 
   ${webserver}:
-    image: wp-${webserver}:latest
+    image: airoman/wp-dind:${webserver}-${webserver_version}
     container_name: ${name}-${webserver}
     depends_on:
       - php
