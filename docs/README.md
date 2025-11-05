@@ -299,6 +299,16 @@ Found an issue or want to improve the documentation?
 
 ---
 
+## 🤝 Contributing
+
+Want to contribute to this project?
+
+- **[Contributing Guidelines](../CONTRIBUTING.md)** - How to contribute
+- **[Conventional Commits Guide](CONVENTIONAL_COMMITS.md)** - Commit message format
+- **[Pull Request Template](PULL_REQUEST_TEMPLATE.md)** - PR template
+
+---
+
 ## 📝 Documentation Standards
 
 All documentation follows these standards:
@@ -322,6 +332,6 @@ Use your editor's search function to find:
 
 ---
 
-**Last Updated:** 2025-11-04  
+**Last Updated:** 2025-11-05
 **Version:** 1.0.0
 
