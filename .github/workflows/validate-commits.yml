@@ -1,0 +1,239 @@
+name: Validate Commit Messages
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  validate-commits:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Get PR commits
+        id: get-commits
+        run: |
+          # Get all commits from the PR
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          
+          # Fetch commits from the PR
+          gh pr view $PR_NUMBER --json commits --jq '.commits[].messageHeadline' > pr_commits.txt
+          
+          echo "Commits to validate:"
+          cat pr_commits.txt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Validate commit messages
+        id: validate
+        run: |
+          # Conventional Commit regex pattern
+          # Format: type(scope): description
+          # type: feat, fix, docs, style, refactor, perf, test, build, ci, chore
+          # scope: optional
+          # !: optional (breaking change)
+          PATTERN='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore)(\(.+\))?!?: .{1,}'
+          
+          INVALID_COMMITS=()
+          VALID_COUNT=0
+          INVALID_COUNT=0
+          
+          # Read commits and validate
+          while IFS= read -r commit; do
+            # Skip empty lines
+            [[ -z "$commit" ]] && continue
+            
+            # Skip merge commits
+            if [[ "$commit" =~ ^Merge ]]; then
+              echo "✓ Skipping merge commit: $commit"
+              continue
+            fi
+            
+            # Validate against pattern
+            if [[ "$commit" =~ $PATTERN ]]; then
+              echo "✓ Valid: $commit"
+              ((VALID_COUNT++))
+            else
+              echo "✗ Invalid: $commit"
+              INVALID_COMMITS+=("$commit")
+              ((INVALID_COUNT++))
+            fi
+          done < pr_commits.txt
+          
+          # Save results
+          echo "valid_count=$VALID_COUNT" >> $GITHUB_OUTPUT
+          echo "invalid_count=$INVALID_COUNT" >> $GITHUB_OUTPUT
+          
+          # Save invalid commits to file
+          if [ ${#INVALID_COMMITS[@]} -gt 0 ]; then
+            printf '%s\n' "${INVALID_COMMITS[@]}" > invalid_commits.txt
+            echo "has_invalid=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_invalid=false" >> $GITHUB_OUTPUT
+          fi
+          
+          echo ""
+          echo "Summary:"
+          echo "  Valid commits: $VALID_COUNT"
+          echo "  Invalid commits: $INVALID_COUNT"
+      
+      - name: Comment on PR (if invalid commits found)
+        if: steps.validate.outputs.has_invalid == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const invalidCommits = fs.readFileSync('invalid_commits.txt', 'utf8').trim().split('\n');
+            const validCount = '${{ steps.validate.outputs.valid_count }}';
+            const invalidCount = '${{ steps.validate.outputs.invalid_count }}';
+            
+            const body = `## ❌ Invalid Commit Messages Found
+            
+            **${invalidCount}** commit(s) do not follow the [Conventional Commits](https://www.conventionalcommits.org/) format.
+            
+            ### Invalid Commits:
+            
+            ${invalidCommits.map(commit => `- \`${commit}\``).join('\n')}
+            
+            ### Required Format:
+            
+            \`\`\`
+            <type>[optional scope]: <description>
+            \`\`\`
+            
+            ### Valid Types:
+            
+            - \`feat\` - New feature
+            - \`fix\` - Bug fix
+            - \`docs\` - Documentation changes
+            - \`style\` - Code formatting (no logic change)
+            - \`refactor\` - Code restructuring
+            - \`perf\` - Performance improvements
+            - \`test\` - Adding or updating tests
+            - \`build\` - Build system or dependencies
+            - \`ci\` - CI/CD configuration
+            - \`chore\` - Maintenance tasks
+            
+            ### Examples:
+            
+            \`\`\`bash
+            feat(cli): add wp-dind install command
+            fix(docker): resolve MySQL port conflict
+            docs: update installation guide
+            perf(images): reduce PHP image size
+            \`\`\`
+            
+            ### Breaking Changes:
+            
+            Add \`!\` after type for breaking changes:
+            \`\`\`bash
+            feat!: change default PHP version to 8.3
+            \`\`\`
+            
+            ### Resources:
+            
+            - [Conventional Commits Guide](https://github.com/${{ github.repository }}/blob/main/docs/CONVENTIONAL_COMMITS.md)
+            - [Contributing Guidelines](https://github.com/${{ github.repository }}/blob/main/CONTRIBUTING.md)
+            
+            ---
+            
+            **Please update your commit messages and force-push to this PR.**
+            
+            You can amend commits with:
+            \`\`\`bash
+            git rebase -i HEAD~${invalidCount}
+            # Edit commit messages in the editor
+            git push --force-with-lease
+            \`\`\`
+            `;
+            
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('Invalid Commit Messages Found')
+            );
+            
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
+      
+      - name: Comment on PR (if all valid)
+        if: steps.validate.outputs.has_invalid == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const validCount = '${{ steps.validate.outputs.valid_count }}';
+            
+            const body = `## ✅ All Commit Messages Valid
+            
+            All **${validCount}** commit(s) follow the [Conventional Commits](https://www.conventionalcommits.org/) format.
+            
+            The changelog will be automatically updated when this PR is merged! 🎉
+            `;
+            
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              (comment.body.includes('Invalid Commit Messages Found') || 
+               comment.body.includes('All Commit Messages Valid'))
+            );
+            
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
+      
+      - name: Fail if invalid commits found
+        if: steps.validate.outputs.has_invalid == 'true'
+        run: |
+          echo "❌ Found ${{ steps.validate.outputs.invalid_count }} invalid commit message(s)"
+          echo "Please update your commit messages to follow Conventional Commits format"
+          exit 1
+

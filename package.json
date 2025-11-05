@@ -1,6 +1,6 @@
 {
   "name": "wordpress-docker-dind",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "WordPress Docker-in-Docker environment for hosting multiple WordPress instances with network isolation and easy management",
   "main": "index.js",
   "scripts": {

@@ -1,5 +1,30 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+#### CI/CD
+- **Automated Changelog Generation**: GitHub Action workflow that automatically updates CHANGELOG.md when PRs are merged
+  - Parses Conventional Commit messages from merged PRs
+  - Categorizes changes by type (feat, fix, docs, etc.)
+  - Generates formatted changelog entries with PR links
+  - Commits changes back to the repository
+  - Posts changelog entry as PR comment
+- **Conventional Commits Guide**: Comprehensive documentation for using Conventional Commits format
+- **PR Template**: Pull request template with commit type checklist
+- **Contributing Guide**: Complete contribution guidelines with development workflow
+
+#### Documentation
+- Added `.github/CONVENTIONAL_COMMITS.md` - Detailed guide on Conventional Commits
+- Added `.github/COMMIT_TYPES.md` - Quick reference card for commit types
+- Added `.github/workflows/README.md` - Documentation for GitHub Actions workflows
+- Added `.github/PULL_REQUEST_TEMPLATE.md` - Template for pull requests
+- Added `CONTRIBUTING.md` - Contribution guidelines and development workflow
+- Updated `README.md` with contributing section and automated changelog information
+
+---
+
 ## [2.0.0] - 2025-11-03
 
 ### Major Enhancements
